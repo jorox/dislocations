@@ -1,0 +1,173 @@
+# Input file for creating an Fe/Al interface
+#  ** Z-direction Al(001)/Fe(001) plane stacking
+#  ** X-direction Al[100]/Fe[110] this produces the best lattice matching since
+#     Fe spacing along [110] is equal to a*sqrt(2) = 4.0538
+#  in order to stack different crystallographic planes, the box spacing needs
+#  to be correctly modified
+
+#  Created by Wassim Kassem 18/07/2016
+
+units       metal
+dimension   3
+boundary    p      p     f  #layers are stacked along z
+atom_style  atomic          #no need for charges or bonds
+
+#------------ Constant parameters -------------------------------
+variable   latparamZra  equal  3.234055 #from EAM potential file Zr_3.eam.fs
+variable   latparamZrc  equal  5.1675   # from Khater, Bacon, Acta Mater 58 (2010) 2978
+variable   sqrt3        equal  sqrt(3) 
+variable   c_over_a     equal  ${latparamZrc}/${latparamZra}
+#------------ Variable parameters -------------------------------
+variable    nz  equal  8 #number of Fe layers in z-direction
+variable    nx  equal  8 #this is only true for [110] orientation of Fe along X
+variable    ny  equal  2
+variable    T     equal  10 #Kelvins - temperature for equilibration of the system
+
+#------------ Create the box ----------------------------------
+                                           
+lattice     custom ${latparamZra} &
+            a1 1.0   0.0    0.0 &
+	    a2 0.0   0.0 ${sqrt3} &
+            a3 0.0 ${c_over_a} 0.0 & 
+            basis 0.0    0.0      0.0 &
+	    basis 0.0 0.33333333  0.5 &
+	    basis 0.5    0.5      0.0 &
+	    basis 0.5 0.83333333  0.5
+variable      tmp1 equal ${nz}-0.1
+region        fullbox block   0 ${nx} 0 ${ny} 0 ${tmp1} units lattice
+create_box    1       fullbox
+create_atoms  1       box
+write_dump    all custom snap.0.lmp id type x y z
+
+#------------ Remove one plane the Fe layer -----------------------------
+variable      tmp1 equal ${nx}-1.1 # b = 0.3[11-20] = 1 lattice spacing ==> removes 1 plane
+variable      tmp2 equal ${nz}/2+0.05
+region        rg_ghost block  ${tmp1} INF INF INF INF ${tmp2} units lattice
+region        rg_lower block  INF     INF INF INF INF ${tmp2} units lattice
+region        rg_upper block  INF     INF INF INF ${tmp2} INF units lattice
+delete_atoms  region rg_ghost
+write_dump    all custom snap.remove.lmp id type x y z  
+
+#----------- Rescale atoms-----------------------------------------------
+variable     x_dilate atom x*(1/2/(${nx}-1)) 
+variable     x_comprs atom x*(-1/2/(${nx}))
+variable     null equal 0
+group        at_upper region rg_upper
+group        at_lower region rg_lower
+
+displace_atoms at_upper move v_x_comprs v_null v_null units box
+displace_atoms at_lower move v_x_dilate v_null v_null units box
+
+change_box    all x delta 0 -0.5 units lattice  #decrease box by 0.5b
+
+write_dump    all custom snap.disloc.lmp id type x y z
+
+quit
+#------------------ Define immobile zones
+variable      tmp0 equal 2.5
+variable      tmp1 equal ${nz}-${tmp0}
+region        rgfix_top block INF INF INF INF ${tmp1} INF       units lattice
+region        rgfix_bot block INF INF INF INF 0       ${tmp0}   units lattice
+group         atfix_top region rgfix_top
+group         atfix_bot region rgfix_bot
+group         freeatoms subtract all atfix_top atfix_bot
+
+#----------------------------Define potential-------------------
+mass        1 91.224
+timestep    0.005
+change_box  all z delta -5 5 units box
+
+pair_style eam/fs
+pair_coeff * * Zr_3.eam.fs Zr #Terentyev, Bacon, Osetsky J. Phys. COndens. Matter. 20 2008 445007
+velocity    freeatoms create $T 12558 dist gaussian mom yes
+
+fix         freez atfix_top setforce 0 0 0
+fix         freez1 atfix_bot setforce 0 0 0
+#neigh_modify exclude group atfix_top atfix_top
+#neigh_modify exclude group atfix_bot atfix_bot 
+velocity    atfix_top set 0 0 0
+velocity    atfix_bot set 0 0 0
+
+
+#---------- Minmize forces ----------------------------------
+compute       mype all pe
+variable      peatom equal c_mype/count(all)  #PE per atom
+
+thermo        100
+thermo_style  custom step v_peatom press lx ly lz
+#minimize      1e-20 1e-25 50000 1000000
+
+#---------- Equilibration -----------------------------------
+
+fix            1 all nvt temp $T $T 0.2 #relax system in XY plane 
+dump           eq all custom 200 dump.equilib.dat &
+               id type x y z
+
+thermo         100
+thermo_style   custom step temp press lx ly lz v_peatom
+
+run            25000  #200 ps
+unfix          1
+undump         eq
+
+#minimize       1e-25 1e-30 5000 100000
+reset_timestep 0
+write_restart equilib.restart
+write_dump    all custom snap_minimize.lmp id x y z
+
+###################################################################################
+
+label    deform
+
+velocity	freeatoms scale $T
+variable        mylz equal lz-10
+print           "#Step exz(1) Fx/lx/ly(MPa) Fx2/A(MPa) -pxz(MPa) pe(eV/atom)" file hooke.dat
+
+variable        tmp1 equal ${nz}-4
+region          rg_freetop block INF INF INF INF ${tmp1} ${nz} units lattice
+group           atfree_top region rg_freetop 
+
+compute  	ff freeatoms group/group atfix_top pair yes
+compute         ff2 atfree_top reduce sum fx
+compute  	cogtop atfix_top com
+
+variable 	cogtopx equal c_cogtop[1]
+variable 	tauxz   equal c_ff[1]/lx/ly
+variable        tauxz2  equal c_ff2/lx/ly
+ 
+variable        tp2  equal "-v_tauxz*1.60218e-19/1e-30*1e-6" #MPa
+variable        tp22 equal "-v_tauxz2*1.60218e-19/1e-30*1e-6" #MPa
+variable        tp3 equal "-pxz*0.1" #MPa
+variable        tp4 equal pe/count(freeatoms)
+
+thermo_style 	custom step temp press v_cogtopx
+run 		0
+
+variable        cogtopx0 equal ${cogtopx}
+variable        it loop 1 300
+
+label loop
+
+variable        strain equal (v_cogtopx-${cogtopx0})/(lz-10)*100
+variable        tmp1   equal (v_it>0)*(lz-10)*2e-5 #erate = 10^7 s^-1 = 10^-5 ps^-
+displace_atoms 	atfix_top move v_tmp1 0 0 units box 
+
+variable        p0  equal ${it}
+variable        p1  equal ${tmp1}/(lz-10)*100*${it}
+
+thermo 	        100
+thermo_style	custom step v_p1 v_strain v_tp2 v_tp22 v_tp3 v_tp4 press temp pe
+
+minimize 	1e-25 1e-30 50000 100000
+
+print           "${p0} ${p1} ${tp2} ${tp22} ${tp3} ${tp4}" append hooke.dat screen no
+write_dump      all custom ${res}/deform/deformed.dat.${it} id x y z
+
+next     it
+jump     in.Zr loop
+
+
+######################################
+# SIMULATION DONE
+print "All done"
+write_restart done.restart
