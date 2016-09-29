@@ -113,7 +113,8 @@ persy.add_argument("-z", help="Savistzky-Golay smoothing factors: WINDOW-size po
 persy.add_argument("-d", "--header", type=int, nargs=1,
                    help="line number to get axes titles from", default=2)
 
-persy.add_argument("-t","--title", nargs="*", help="title to print on top of the plot") 
+persy.add_argument("-t","--title", nargs="*", help="title to print on top of the plot")
+persy.add-argument("-v","--average",nargs=1,help="average data using a window", type=int)
 
 args = persy.parse_args()
 print args
@@ -141,6 +142,13 @@ for line in fin:
         y2.append(float(line[args.y2-1]))
 
 x = np.array(x); y = np.array(y)   #change to np arrays
+if args.average is not None:
+    s = len(y)/args.average #number of windows
+    r = len(y)%args.average #remainder
+    y = y[:len(y)-r].reshape(-1,s)
+    y = np.mean(y,1)
+    x = x[:len(x)-r]
+    x = [::s]
 if args.zero:
     print("... zeroing y-data")
     y = y-y[0]           #zero results
