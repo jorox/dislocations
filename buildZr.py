@@ -127,6 +127,7 @@ def main():
     createedge = False
     createloop = False
     createscrew = False
+    negative = False
     load=["\\","|","/","-"]
 
 
@@ -161,6 +162,11 @@ def main():
         if line[0]=="edge":
             print("      ++edge dislocation")
             createedge = True
+        if line[0]=="edge":
+            print("      --edge dislocation")
+            createedge = True
+            negative = True
+            continue
         if line[0] == "screw":
             print("      ++screw dislocation")
             createscrew = True
@@ -256,7 +262,7 @@ def main():
 # create the edge dislocation
     if createedge:
         print("\n /////////////// Building Edge dislocation \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
-        nghost = buildedge1120(atoms,nx,ny,nz,xspacing,box)
+        nghost = buildedge1120(atoms,nx,ny,nz,xspacing,box,negative)
         natoms -= nghost
         print("... new box dimensions along X: %1.4f %1.4f"%(box[0,0],box[0,1]))
         print("... %1.0f atoms, %1.0f ghost atoms"%(natoms,nghost))
@@ -342,7 +348,7 @@ def main():
 
 #################################################################################################
 
-def buildedge1120(atoms,nx,ny,nz,spacing,box):
+def buildedge1120(atoms,nx,ny,nz,spacing,box,neg):
     zcut = (nz[1]+nz[0])/2.0
     N = nx[1]-nx[0]
     xcut = nx[1]-1
@@ -350,20 +356,32 @@ def buildedge1120(atoms,nx,ny,nz,spacing,box):
     nghost = 0
     exx1 = -0.5/N
     exx2 = 0.5/(N-1)
-
-    for ia in range(len(atoms)):
-        iz=atoms[ia][4][2]; iy = atoms[ia][4][1]; ix=atoms[ia][4][0]; ib = atoms[ia][4][3]
-        if iz>zcut or (iz==zcut and ib>0):
-            if ix==xcut:
-                atoms[ia][0] = -1
-                nghost +=1
-                continue
-            else:
-                atoms[ia][1] += (atoms[ia][1]-xmin)*exx2
+    if neg: #negative Burgers vector
+        for ia in range(len(atoms)):
+            iz=atoms[ia][4][2]; iy = atoms[ia][4][1]; ix=atoms[ia][4][0]; ib = atoms[ia][4][3]
+            if iz>zcut or (iz==zcut and ib>0):
+                if ix==xcut:
+                    atoms[ia][0] = -1
+                    nghost +=1
+                    continue
+                else:
+                    atoms[ia][1] += (atoms[ia][1]-xmin)*exx2
             
-        else:
-            atoms[ia][1] += (atoms[ia][1]-xmin)*exx1
-
+            else:
+                atoms[ia][1] += (atoms[ia][1]-xmin)*exx1
+    else:
+        for ia in range(len(atoms)):
+            iz=atoms[ia][4][2]; iy = atoms[ia][4][1]; ix=atoms[ia][4][0]; ib = atoms[ia][4][3]
+            if iz>zcut or (iz==zcut and ib>0):
+                atoms[ia][1] += (atoms[ia][1]-xmin)*exx1
+            else:
+                if ix==xcut:
+                    atoms[ia][0] = -1
+                    nghost +=1
+                    continue
+                else:
+                    atoms[ia][1] += (atoms[ia][1]-xmin)*exx2
+            
 
     box[0][1] -= 0.5*spacing
     return nghost
