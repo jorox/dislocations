@@ -354,7 +354,7 @@ def buildedge1120(atoms,nx,ny,nz,spacing,box):
     for ia in range(len(atoms)):
         iz=atoms[ia][4][2]; iy = atoms[ia][4][1]; ix=atoms[ia][4][0]; ib = atoms[ia][4][3]
         if iz>zcut or (iz==zcut and ib>0):
-            atoms[ia][1] += (atoms[ia][1]-xmin)*exx1                        
+            atoms[ia][1] += (atoms[ia][1]-xmin)*exx1
         else:
             if ix==xcut:
                 atoms[ia][0] = -1

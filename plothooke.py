@@ -114,7 +114,7 @@ persy.add_argument("-d", "--header", type=int, nargs=1,
                    help="line number to get axes titles from", default=2)
 
 persy.add_argument("-t","--title", nargs="*", help="title to print on top of the plot")
-persy.add-argument("-v","--average",nargs=1,help="average data using a window", type=int)
+persy.add_argument("-v","--average",help="average data using a window", type=int)
 
 args = persy.parse_args()
 print args
@@ -145,10 +145,11 @@ x = np.array(x); y = np.array(y)   #change to np arrays
 if args.average is not None:
     s = len(y)/args.average #number of windows
     r = len(y)%args.average #remainder
-    y = y[:len(y)-r].reshape(-1,s)
+    print("... averaging data: window size=%d, points removed=%d"%(args.average,r))
+    y = y[:len(y)-r].reshape(-1,args.average)
     y = np.mean(y,1)
     x = x[:len(x)-r]
-    x = [::s]
+    x = x[::args.average]
 if args.zero:
     print("... zeroing y-data")
     y = y-y[0]           #zero results
