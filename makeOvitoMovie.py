@@ -58,7 +58,7 @@ print("... range = %d:%d:%d"%(args.range[0],args.range[1],args.range[2]))
 print("... CNA cutoff = "+str(args.cna))
 cna = CommonNeighborAnalysisModifier(mode = CommonNeighborAnalysisModifier.Mode.FixedCutoff, cutoff=args.cna)
 node.modifiers.append(cna)
-select_normal = SelectExpressionModifier(expression = 'StructureType>0')
+select_normal = SelectExpressionModifier(expression = 'StructureType>0 || abs(Position.Z)>CellSize.Z/4')
 node.modifiers.append(select_normal)
 node.modifiers.append(DeleteSelectedParticlesModifier())
 print("... modifiers added")
@@ -127,6 +127,6 @@ for ivp in range(args.vpcount):
 
     print(rs.range)
     rs.renderer.antialiasing = True
-    print("... rendering movie: %s, %d fps, %s "%(str(vp.type),fps, str(rs.range)))
+    print("*** rendering movie: %s, %d fps, %s "%(str(vp.type),fps, str(rs.range)))
     vp.render(rs)
     print("... done writing to "+os.getcwd()+"/"+rs.filename)
