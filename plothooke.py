@@ -194,9 +194,15 @@ if args.movie is not None:
     a2 = ax1.axhline(y=y[0],linestyle="--",color="grey")
     a3 = ax1.axvline(x=x[0], linestyle="--",color="grey")
     for i in range(len(x)):
-        a1[0].set_data(x[i],y[i])
-        a2.set_ydata(y[i])
-        a3.set_xdata(x[i])
+        if args.smooth is None: 
+            a1[0].set_data(x[i],y[i])
+            a2.set_ydata(y[i])
+            a3.set_xdata(x[i])
+        else:
+            a1[0].set_data(x[i],yhat[i])
+            a2.set_ydata(yhat[i])
+            a3.set_xdata(x[i])
+            
         plt.savefig(args.movie+"."+str(i)+".png")
         prcnt = float(i)/len(x)*100
         print(load[i%4]+ "     %d %%"%(prcnt))
