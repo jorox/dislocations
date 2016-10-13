@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 import numpy as np
 import sys
 import math
+
 # Import OVITO modules.
 from ovito.io import *
 from ovito.modifiers import *
@@ -69,7 +70,6 @@ else:
     dxamod.input_crystal_type = DislocationAnalysisModifier.Lattice.HCP
     node.modifiers.append(dxamod)
     print("... Dislocation analysis for %s crystal"%(dxamod.input_crystal_type))
-
 print("... modifiers added")
     
 # COMPUTE
