@@ -265,12 +265,13 @@ def main():
 # create the screw dislocation
     if createscrew:
         print("\n /////////////// Building Screw dislocation \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
-        buildscrew(atoms,nx,ny,nz,a)
-        fixids(atoms)
         box = [[nx[0]*xspacing,nx[1]*xspacing],
                [ny[0]*yspacing,ny[1]*yspacing],
                [nz[0]*zspacing,nz[1]*zspacing]]
         box = np.array(box)
+        buildscrew(atoms,nx,ny,nz,a,box)
+        fixids(atoms)
+        
         print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
     
 # create the loop 
@@ -368,7 +369,7 @@ def buildedge1120(atoms,nx,ny,nz,spacing,box):
     return nghost
 
 
-def buildscrew(atoms,nx,ny,nz,a):
+def buildscrew(atoms,nx,ny,nz,a,box):
     # The function creates a screw [11-20] dislocation in the basal plane
     # The method used is that taken from Serra Bacon 2013 and Khater Bacon 2010
     # The method follows the technique in Bacon "Intro to Dislocations" eq. (4.11) with z->x, y->z, x->y
@@ -376,32 +377,63 @@ def buildscrew(atoms,nx,ny,nz,a):
     #    ux = (b/2/pi) (arctan(z/y)-pi) = n/2/pi (theta-pi) theta = 0 to 2pi
     # For y=0, theta can be either pi/2 or 3pi/2 or 0,
     #  Intro to Dislocations p.66 that for x=0 check the drawing
+    cntr_pnt = np.sum(box,1)/2.0
+    print cntr_pnt
+    fout = open("dirty.dat","w")
+    fout.write("#z y theta")
     for i in range(len(atoms)):
-        if atoms[i][2] == 0: # y=0 
-            if atoms[i][3] > 0 : #z= positive ==> theta = pi/2
-                ux = a/2/np.pi*(np.pi/2-np.pi)
-            else: 
-                if atoms[i][3] == 0: ux = 0 #core
-                else: ux = a/2/np.pi*(3.0/2*np.pi-np.pi) #z=negative ==> theta=3pi/2
- 
-        else: ux = a/2/np.pi*(np.arctan(atoms[i][3]/atoms[i][2])-np.pi) #default
-        
+        y = atoms[i][2]-cntr_pnt[1]
+        z = atoms[i][3]-cntr_pnt[2]
+        if y == 0: # y=0 
+            if z > 0 : #theta = pi/2
+                ux = a/4.0
+            elif z < 0: ux = 3.0*a/4.0 #theta=3pi/2 
+            else: ux = a/2.0 #core (theta = pi) 
+        elif z == 0:
+            if y > 0: ux = a # theta = 2pi
+            elif y < 0: ux = a/2.0 #theta = pi
+            else: ux = a/2.0
+        else: ux = a/np.pi*(np.arctan(z/y)+np.pi/2) #default
+        fout.write("\n%1.0f %1.3f %1.3f %1.3f"%(i,z,y,ux/a))
         atoms[i][1] += ux
 
     # To restablish periodicity across the Y-direction a displacement of +/-b/2 
     # was added to the x-coordinate of atoms on the +/- y boundaries
-    for ix in range(nx[0],nx[1]):
-        for iz in range(nz[0],nz[1]):
-            for ib in range(4): # 4-atoms per box cell
-                aid = returnid([ix,ny[0],iz,ib],nx,ny,nz, [0,4])
-                atoms[aid][1] -= a/2 # -y boundary
-                aid = returnid([ix,ny[1]-1,iz,ib], nx, ny, nz, [0,4])
-                atoms[aid][1] += a/2 # +y boundary
+    #for ix in range(nx[0],nx[1]):
+    #    for iz in range(nz[0],nz[1]):
+    #        for ib in range(4): # 4-atoms per box cell
+    #            aid = returnid([ix,ny[0],iz,ib],nx,ny,nz, [0,4])
+    #            atoms[aid][1] -= a/2 # -y boundary
+    #            aid = returnid([ix,ny[1]-1,iz,ib], nx, ny, nz, [0,4])
+    #            atoms[aid][1] += a/2 # +y boundary
 
 def fixids(atoms):
     for i in range(len(atoms)):
         atoms[i][0] = i+1
     return 0
+
+def get_loop_atoms(angle,nx,ny,nz,n0001,n1100,xloop):
+    # This function returns the ids of the atoms make up the dislocation loop
+    # Three angles are possible: 0, 60, 120 degrees
+    loop_atoms = []
+    if angle == 60:
+        loop = wrap(xloop,nx)
+        xloop1 = wrap(xloop-1,nx)
+    
+        for iy in range(n0001[0],n0001[1]):
+            for iz in range(n1100[0],n1100[1]):
+                iy = wrap(iy,ny)
+                iz = wrap(iz,nz)
+                iz1 = wrap(iz-1,nz)
+                catoms = [ [xloop,iy,iz,0], [xloop1,iy,iz1,3], 
+                           [xloop1,iy,iz1,2], [xloop,iy,iz1,1]]
+                #print("DEBUG-catoms\n ------------- \n",catoms,"\n ------------\n DEBUG-catoms")
+                for ic in catoms:
+                    loop_atoms.append(returnid(ic,nx,ny,nz,[0,4]))
+                    #print("DEBUG-loop \n",atoms[loop_atoms[-1]][4],"\n DEBUG-loop")
+                    if atoms[loop_atoms[-1]][0] == -1:
+                        print("Warning: trying to modify ghost atom")
+        
 
 def buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
     # This function creates a dislocaiton loop with "nsia" ISAs
@@ -438,6 +470,7 @@ def buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
 #  the Burgers vector direction is opposite to the disloc for eps>=0.3 it is the same  
     xloop = wrap(xloop,nx)
     xloop1 = wrap(xloop-1,nx)
+    
     for iy in range(n0001[0],n0001[1]):
         for iz in range(n1100[0],n1100[1]):
             iy = wrap(iy,ny)

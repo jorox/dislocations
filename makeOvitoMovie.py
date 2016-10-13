@@ -18,7 +18,6 @@ import os
 # is the snapshots deform.*.dat files and perhaps the png snaphots of
 # a stress-strain curve
 
-
 pers = ArgumentParser()
 
 pers.add_argument("fin", help="Input file", metavar="File-IN")
@@ -27,6 +26,7 @@ pers.add_argument("-o","--output",help="Output File Name base", metavar="FOUT.DI
 pers.add_argument("-c","--cna",  help="CNA cutoff", type=float, metavar="CUTOFF")
 pers.add_argument("-t","--time", help="Total length of video in seconds",type=int,metavar="TIME")
 pers.add_argument("-v", "--vpcount", help="output all viewports", type=int, default=1)
+pers.add_argument("-d", "--dxa", help="Perform dislocation analyis", action="store_true")
 args = pers.parse_args()
 
 # find wild-card in filename
@@ -41,7 +41,7 @@ node = import_file(args.fin)
 print("... "+str(node.source.source_path)+ " loaded")
 print("... "+str(node.source.num_frames)+" snapshots found")
 # Handle warnings
-if args.cna is None:                     #cna cutoff unspecified
+if not args.dxa and args.cna is None:                     #cna cutoff unspecified
     print("--> warning CNA cutoff undefined, using default 3.86")
     args.cna = 3.86
 if args.range is None:
@@ -55,12 +55,21 @@ print("... range = %d:%d:%d"%(args.range[0],args.range[1],args.range[2]))
 
 # MODIFIERS
 #----------------------------------------------------------
-print("... CNA cutoff = "+str(args.cna))
-cna = CommonNeighborAnalysisModifier(mode = CommonNeighborAnalysisModifier.Mode.FixedCutoff, cutoff=args.cna)
-node.modifiers.append(cna)
-select_normal = SelectExpressionModifier(expression = 'StructureType>0 || abs(Position.Z)>CellSize.Z/4')
-node.modifiers.append(select_normal)
-node.modifiers.append(DeleteSelectedParticlesModifier())
+if not args.dxa:
+    print("... CNA cutoff = "+str(args.cna))
+    cna = CommonNeighborAnalysisModifier(mode   = CommonNeighborAnalysisModifier.Mode.FixedCutoff,
+                                         cutoff = args.cna)
+    node.modifiers.append(cna)
+    select_normal = SelectExpressionModifier(
+        expression = 'StructureType>0 || abs(Position.Z)>CellSize.Z/4')
+    node.modifiers.append(select_normal)
+    node.modifiers.append(DeleteSelectedParticlesModifier())
+else:
+    dxamod = DislocationAnalysisModifier()
+    dxamod.input_crystal_type = DislocationAnalysisModifier.Lattice.HCP
+    node.modifiers.append(dxamod)
+    print("... Dislocation analysis for %s crystal"%(dxamod.input_crystal_type))
+
 print("... modifiers added")
     
 # COMPUTE
@@ -77,6 +86,14 @@ for i in range(args.range[0],args.range[1],args.range[2]):
 
 # Render
 #-----------------------------------------------------------
+if args.dxa:
+    print("... Found %i dislocation segments"%len(node.output.dislocations.segments))
+    for segment in node.output.dislocations.segments:
+        print("Segment %i: length=%f, Burgers vector=%s" %
+              (segment.id, segment.length, segment.true_burgers_vector))
+        print(segment.points)
+    node.output.particle_properties.position.display = None
+    node.output.dislocations.display.enabled = True
 node.add_to_scene()
 cell = node.source.cell
 cell.display.enabled = True
@@ -98,6 +115,19 @@ for ivp in range(args.vpcount):
     tripod = CoordinateTripodOverlay()
     tripod.size = 0.1
     tripod.alignment = QtCore.Qt.AlignRight ^ QtCore.Qt.AlignBottom
+
+    # Create an overlay.
+    tstep_text_overlay = TextLabelOverlay(
+        text = str('timestep: [Timestep]'), 
+    alignment = QtCore.Qt.AlignLeft ^ QtCore.Qt.AlignBottom,
+    offset_y = 0.05,
+    font_size = 0.01,
+    text_color = (1,1,1))
+    tstep_text_overlay.source_node = node
+
+# Attach overlay to the active viewport.
+#viewport = ovito.dataset.viewports.active_vp
+#viewport.overlays.append(overlay)
 #vp.zoom_all()
 #vp.fov = math.radians(20.0)
 #Create an overlay.
@@ -106,6 +136,7 @@ for ivp in range(args.vpcount):
 #viewport = ovito.dataset.viewports.active_vp
 #viewport.overlays.append(tripod)
     vp.overlays.append(tripod)
+    vp.overlays.append(tstep_text_overlay)
 
     if args.time is not None:
         fps = int(N/args.time)
