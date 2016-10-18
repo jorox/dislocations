@@ -1,0 +1,11 @@
+... reading input file zrxtal.txt
+... orienting crystal
+     X/Y/Z directions: 
+     spacings (A): 3.23412, 5.16798, 5.60166
+     number of unit cells in XYZ directions: 16 2 8
+... box dimensions (A):
+     X -25.87296 --> 25.87296 
+     Y 0.00000 --> 10.33596 
+     Z -22.40664 --> 22.40664
+
+... done writing 990 atoms to file Zr.xyz

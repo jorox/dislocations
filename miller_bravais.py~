@@ -1,0 +1,39 @@
+class Point(object):
+    """A class representing a point in Miller-Bravais notation. 
+    Points have the following properties:
+
+    Attributes:
+    coords: A numpy array of 4 numbers
+    """
+    def __init__(self,u,v,w,t):
+        self.coords = np.array([u,v,w,t])
+    def __init__(self):
+        self.coords = np.array([0,0,0,0])
+    def __init__(self, a):
+        if len(a) != 4:
+            raise ValueError('Input array must have exactly 4 elements')
+        self.coords = np.array(a)
+    
+    def __str__(self):
+        return "[%1.3f, %1.3f, %1.3f, %1.3f]"%(self.u,self.v,self.w,self.t)
+
+class Vector(Point):
+    """A class representing a vector or direction in Miller-Bravais notation.
+    DVector has the following properties:
+
+    Attributes:
+    coords: A numpy array of 4 numbers
+    """
+    def __init__(self,u,v,w,t):
+        self.coords = np.array([u,v,w,t])
+    def __init__(self):
+        self.coords = np.array([0,0,0,0])
+
+    def __str__(self):
+        return "[%1.3f, %1.3f, %1.3f, %1.3f]"%(self.u,self.v,self.w,self.t)
+
+    def __add__(self,other):
+         return Vector(self.coords + other.coords)
+
+        
+    

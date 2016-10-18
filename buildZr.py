@@ -127,7 +127,6 @@ def main():
     createedge = False
     createloop = False
     createscrew = False
-    negative = False
     load=["\\","|","/","-"]
 
 
@@ -162,11 +161,6 @@ def main():
         if line[0]=="edge":
             print("      ++edge dislocation")
             createedge = True
-        if line[0]=="edge":
-            print("      --edge dislocation")
-            createedge = True
-            negative = True
-            continue
         if line[0] == "screw":
             print("      ++screw dislocation")
             createscrew = True
@@ -262,7 +256,7 @@ def main():
 # create the edge dislocation
     if createedge:
         print("\n /////////////// Building Edge dislocation \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
-        nghost = buildedge1120(atoms,nx,ny,nz,xspacing,box,negative)
+        nghost = buildedge1120(atoms,nx,ny,nz,xspacing,box)
         natoms -= nghost
         print("... new box dimensions along X: %1.4f %1.4f"%(box[0,0],box[0,1]))
         print("... %1.0f atoms, %1.0f ghost atoms"%(natoms,nghost))
@@ -296,12 +290,20 @@ def main():
         fout.write("\nZr %1.6f %1.6f %1.6f"%(
                              atoms[i][1], atoms[i][2],atoms[i][3]))
     fout.close()
-
+    correct = True
 # write LAMMPS input file
     flammps = open("zr.data","w")
     flammps.write("#ver. "+ver+" HCP-Zr [11-20],[0001],[-1100] + dislocation and loop, metal units, "+str(T)+"K")
     flammps.write("\n    %d atoms\n    %d atom types\n"%(natoms,1)) #N atoms, 1 type
-    flammps.write("\n%1.6f %1.6f xlo xhi\n%1.6f %1.6f ylo yhi\n%1.6f %1.6f zlo zhi\n"%
+    if correct and createscrew:
+        print("--> warning: shearing box for screw dislocation")
+        Ly = box[1,1]-box[1,0]
+        yhi = np.sqrt(Ly**2-a**2/4)+box[1,0]
+        flammps.write("\n%1.6f %1.6f xlo xhi\n%1.6f %1.6f ylo yhi\n%1.6f %1.6f zlo zhi"%
+                  (box[0,0],box[0,1], box[1,0],yhi, box[2,0],box[2,1]) )
+        flammps.write("\n%1.4f %1.4f %1.4f xy xz yz\n"%(-a/2,0.0,0.0))
+    else:
+        flammps.write("\n%1.6f %1.6f xlo xhi\n%1.6f %1.6f ylo yhi\n%1.6f %1.6f zlo zhi\n"%
                   (box[0,0],box[0,1], box[1,0],box[1,1], box[2,0],box[2,1]) )
     flammps.write("\nMasses\n")
     flammps.write("\n    1 91.224\n")
@@ -334,7 +336,12 @@ def main():
     fsnap = open("zr.ov"+ver,"w")
     fsnap.write("ITEM: TIMESTEP\n0")
     fsnap.write("\nITEM: NUMBER OF ATOMS\n%d"%(natoms))
-    fsnap.write("\nITEM: BOX BOUNDS pp pp ss\n%1.5f %1.5f\n%1.5f %1.5f\n%1.5f %1.5f"%
+    if correct and createscrew:
+        print("--> warning: shearing box for screw dislocation")
+        fsnap.write("\nITEM: BOX BOUNDS xy xz yz pp pp ss\n%1.5f %1.5f %1.5f\n%1.5f %1.5f %1.5f\n%1.5f %1.5f %1.5f"%
+                      (box[0,0],box[0,1],-a/2, box[1,0],yhi,0.0, box[2,0],box[2,1],0.0) )
+    else:
+        fsnap.write("\nITEM: BOX BOUNDS pp pp ss\n%1.5f %1.5f\n%1.5f %1.5f\n%1.5f %1.5f"%
                       (box[0,0],box[0,1], box[1,0],box[1,1], box[2,0],box[2,1]) )
     fsnap.write("\nITEM: ATOMS id type x y z")
     ia = 0
@@ -349,7 +356,7 @@ def main():
 
 #################################################################################################
 
-def buildedge1120(atoms,nx,ny,nz,spacing,box,neg):
+def buildedge1120(atoms,nx,ny,nz,spacing,box):
     zcut = (nz[1]+nz[0])/2.0
     N = nx[1]-nx[0]
     xcut = nx[1]-1
@@ -370,6 +377,7 @@ def buildedge1120(atoms,nx,ny,nz,spacing,box,neg):
             else:
                 atoms[ia][1] += (atoms[ia][1]-xmin)*exx2
 
+
     box[0][1] -= 0.5*spacing
     return nghost
 
@@ -386,21 +394,23 @@ def buildscrew(atoms,nx,ny,nz,a,box):
     print cntr_pnt
     fout = open("dirty.dat","w")
     fout.write("#z y theta")
+    Lx = np.diff(box[0],1)[0]
     for i in range(len(atoms)):
         y = atoms[i][2]-cntr_pnt[1]
         z = atoms[i][3]-cntr_pnt[2]
-        if y == 0: # y=0 
-            if z > 0 : #theta = pi/2
-                ux = a/4.0
-            elif z < 0: ux = 3.0*a/4.0 #theta=3pi/2 
-            else: ux = a/2.0 #core (theta = pi) 
-        elif z == 0:
-            if y > 0: ux = a # theta = 2pi
-            elif y < 0: ux = a/2.0 #theta = pi
-            else: ux = a/2.0
-        else: ux = a/np.pi*(np.arctan(z/y)+np.pi/2) #default
+        #if y == 0: # y=0 
+        #    if z > 0 :  ux = a/4.0 #theta = pi/2 
+        #    elif z < 0: ux = -a/4.0 #theta=3pi/2 
+        #    else: ux = 0 #core (theta = pi) 
+        #elif z == 0:
+        #    if y > 0: ux = a # theta = 2pi
+        #    elif y < 0: ux = a/2.0 #theta = pi
+        #    else: ux = a/2.0
+        #else:
+        ux = a/2/np.pi*(np.arctan2(z,y)) #default
         fout.write("\n%1.0f %1.3f %1.3f %1.3f"%(i,z,y,ux/a))
         atoms[i][1] += ux
+        atoms[i][1] = wrap_box(atoms[i][1],box[0])
 
     # To restablish periodicity across the Y-direction a displacement of +/-b/2 
     # was added to the x-coordinate of atoms on the +/- y boundaries
@@ -564,6 +574,34 @@ def wrap(i,a):
     tmp = a[0]+(i-a[0])%r
     a[1]+=1 # fix a, passed by reference
     return tmp
+
+def wrap_box(x,a):
+    # Wrap a float x into the range specified by a such that a[0]<=x_wrapped<a[1]
+    # tested and verified with a simple example:
+    # >>> for x in np.arange(-4,5,0.5):
+    #...     print x, wrap_box(x,[-2.5,3])
+    # -4.0 1.5
+    # -3.5 2.0
+    # -3.0 2.5
+    # -2.5 -2.5
+    # -2.0 -2.0
+    # -1.5 -1.5
+    # -1.0 -1.0
+    # -0.5 -0.5
+    # 0.0 0.0
+    # 0.5 0.5
+    # 1.0 1.0
+    # 1.5 1.5
+    # 2.0 2.0
+    # 2.5 2.5
+    # 3.0 -2.5
+    # 3.5 -2.0
+    # 4.0 -1.5
+    # 4.5 -1.0
+
+    if x<a[0]: x = x%a[0] + a[1]
+    elif x>=a[1]: x = x%a[1] + a[0]
+    return x
 
 if __name__=="__main__":
     main()

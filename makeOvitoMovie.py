@@ -26,7 +26,9 @@ pers.add_argument("-r","--range", help="Range", nargs=3, type=int, metavar=("STA
 pers.add_argument("-o","--output",help="Output File Name base", metavar="FOUT.DIM.avi")
 pers.add_argument("-c","--cna",  help="CNA cutoff", type=float, metavar="CUTOFF")
 pers.add_argument("-t","--time", help="Total length of video in seconds",type=int,metavar="TIME")
-pers.add_argument("-v", "--vpcount", help="output all viewports", type=int, default=1)
+pers.add_argument("-v", "--vpcount",
+                  help="Number of Viewports to output (0=pers,1=pers+front,2=pers+front+top",
+                  type=int, default=1)
 pers.add_argument("-d", "--dxa", help="Perform dislocation analyis", action="store_true")
 args = pers.parse_args()
 
@@ -108,9 +110,11 @@ for ivp in range(args.vpcount):
     elif ivp ==1:
         vp.type = Viewport.Type.FRONT
         vp.zoom_all()
-    else:
+    elif ivp ==2:
         vp.type = Viewport.Type.TOP
         vp.zoom_all()
+    else:
+        print("Error: Invalid number of Viewports")
 
     tripod = CoordinateTripodOverlay()
     tripod.size = 0.1
