@@ -127,6 +127,7 @@ def main():
     createedge = False
     createloop = False
     createscrew = False
+    createloop60 = False
     load=["\\","|","/","-"]
 
 
@@ -170,12 +171,21 @@ def main():
             n0001 = [0, 1]
             n1100 = [0, 1]
             print("      ++loop, centered "+str(loop_center)+", unit size")
+        if line[0]=="loop60":
+            createloop60=True
+            loop_center = int(line[1])
+            n0001 = [0, 1]
+            n1010 = [0, 1]
+            print("      ++loop, centered "+str(loop_center)+", unit size")
         if line[0]=="n0001":
             print("      ++loop n0001 direction changed")
             n0001 = np.array(line[1:3],dtype='int')
         if line[0]=="n1100":
             print("      ++loop n1100 direction changed")
             n1100 = np.array(line[1:3],dtype='int')
+        if line[0]=="n1010":
+            print("      ++loop n1010 direction changed")
+            n1010 = np.array(line[1:3],dtype='int')
         if line[0]=="Temp" or line[0]=="temp" :
             print("      ++found temperature")
             T = int(line[1])
@@ -280,6 +290,12 @@ def main():
         nloop = buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,loop_center)
         natoms += nloop
         print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
+# create a 60° loop 
+    if createloop60:
+        print("\n/////////////// Buidling SIA Loop - 60° \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        nloop = buildloop_60(atoms,basis,a,c,nx,ny,nz,n0001,n1010,loop_center)
+        natoms += nloop
+        print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
     
 # write the XYZ file
     foutname = "Zr.xyz"
@@ -301,7 +317,7 @@ def main():
         yhi = np.sqrt(Ly**2-a**2/4)+box[1,0]
         flammps.write("\n%1.6f %1.6f xlo xhi\n%1.6f %1.6f ylo yhi\n%1.6f %1.6f zlo zhi"%
                   (box[0,0],box[0,1], box[1,0],yhi, box[2,0],box[2,1]) )
-        flammps.write("\n%1.4f %1.4f %1.4f xy xz yz\n"%(-a/2,0.0,0.0))
+        flammps.write("\n%1.4f %1.4f %1.4f xy xz yz\n"%(a/2,0.0,0.0))
     else:
         flammps.write("\n%1.6f %1.6f xlo xhi\n%1.6f %1.6f ylo yhi\n%1.6f %1.6f zlo zhi\n"%
                   (box[0,0],box[0,1], box[1,0],box[1,1], box[2,0],box[2,1]) )
@@ -339,7 +355,7 @@ def main():
     if correct and createscrew:
         print("--> warning: shearing box for screw dislocation")
         fsnap.write("\nITEM: BOX BOUNDS xy xz yz pp pp ss\n%1.5f %1.5f %1.5f\n%1.5f %1.5f %1.5f\n%1.5f %1.5f %1.5f"%
-                      (box[0,0],box[0,1],-a/2, box[1,0],yhi,0.0, box[2,0],box[2,1],0.0) )
+                      (box[0,0],box[0,1],a/2, box[1,0],yhi,0.0, box[2,0],box[2,1],0.0) )
     else:
         fsnap.write("\nITEM: BOX BOUNDS pp pp ss\n%1.5f %1.5f\n%1.5f %1.5f\n%1.5f %1.5f"%
                       (box[0,0],box[0,1], box[1,0],box[1,1], box[2,0],box[2,1]) )
@@ -532,6 +548,79 @@ def buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
     
     return Nloop 
         
+
+def buildloop_60(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
+    """
+    Adds interstitial atoms to create a loop with Burgers vector at 60° to the [11-20} direction
+    """
+    loop_atoms = []
+    seed_list = get_seeds_60(n0001,n1100,xloop)
+    for seed in seed_list:
+        catoms.append(seed)
+        seed[3] -=1
+        catoms.append(seed)
+        seed[3] -=1; seed[0] +=1
+        catoms.append(seed)
+        seed[3] +=1
+        catoms.append(seed)
+    
+    for ic in catoms:
+        loop_atoms.append(returnid(ic,nx,ny,nz,[0,4]))
+        #print("DEBUG-loop \n",atoms[loop_atoms[-1]][4],"\n DEBUG-loop")
+        if atoms[loop_atoms[-1]][0] == -1:
+            print("Warning: trying to modify ghost atom")
+            
+    print("    +found %d atoms for the loop"%(Nloop))
+    shift = [0.05*a*np.cos(60.0/180*np.pi),0.0,0.05*a*np.sin(60.0/180*np.pi)]
+    add_sias(atoms,loop_atoms,shift)
+    #print("DEBUG",loop_atoms,"DEBUG")
+    
+def get_seeds_60(n0001,n1010,xloop):
+    """
+    Get a list of seed atoms for the construction of a SIA loop lying 60° to the [11-20] direction.
+    n1010 and n0001 specify the max-min stacking indices along those two directions
+    xloop is the location of the top most segment
+    """
+    seed_list = []
+    seed = [xloop,n0001[1],n1100[1],3]
+    for i0001 in range(n0001[1],n0001[0]-1,-1):
+        seed[1] -= 1
+        for i1100 in range(n1010[1],n1010[0]-1,-1):
+            seed[0] +=1
+            if seed[3] == 1: seed[3] +=2; seed[2] -=1 #ib++, iz-
+            if seed[3] == 3; seed[3] -=2; seed[0] +=1 #ib--, ix++
+            
+            seed_list.append(seed)
+    return seed_list
+
+def add_sias(atoms, loop_atoms, shift):
+    """
+    Add Self-interstitial atoms to the list specified in loop_atoms.
+    The shift is a vector in XYZ space defined in the variable shift
+    """
+    last_index = atoms[-1][0]
+    Nloop = len(loop_atoms)
+    print("DEBUG-shift",shift,"DEBUG-shift")
+
+    for i in range(Nloop):
+        last_index +=1
+        oldatom = atoms[loop_atoms[i]]
+        print("DEBUG-old",oldatom,"DEBUG-old")
+        atoms.append([oldatom[0],oldatom[1],oldatom[2],oldatom[3],
+                      [oldatom[4][0],oldatom[4][1],oldatom[4][2],oldatom[4][3]]])  #store old position
+    
+        for ix in range(3):
+            atoms[loop_atoms[i]][ix] +=  shift[ix]
+            atoms[-1][ix] -= shift[ix]
+        atoms[-1][0] = last_index # fix index of new atoms
+        print("DEBUG-new",atoms[loop_atoms[i]],atoms[-1],"DEBUG-new")
+
+#    atoms[loop_atoms[2]][4][2] -= 1
+#    atoms[loop_atoms[2]][4][0] -= 1
+    print("    +doubled the atoms, shifted, and corrected, %d atoms now"%(len(atoms)))
+    print("    +created dislocation loop with %d SIAs"%(Nloop))
+    
+    return Nloop 
 
 def returnid(a,nx,ny,nz,nb):
     # returns the first id of the atom with ix = [ix,iy,iz,ib]
