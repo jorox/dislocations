@@ -290,9 +290,9 @@ def main():
         nloop = buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,loop_center)
         natoms += nloop
         print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
-# create a 60° loop 
+# create a 60 loop 
     if createloop60:
-        print("\n/////////////// Buidling SIA Loop - 60° \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        print("\n/////////////// Buidling SIA Loop - 60 \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
         nloop = buildloop_60(atoms,basis,a,c,nx,ny,nz,n0001,n1010,loop_center)
         natoms += nloop
         print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
@@ -549,48 +549,65 @@ def buildloop(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
     return Nloop 
         
 
-def buildloop_60(atoms,basis,a,c,nx,ny,nz,n0001,n1100,xloop):
+def buildloop_60(atoms,basis,a,c,nx,ny,nz,n0001,n1010,xloop):
     """
-    Adds interstitial atoms to create a loop with Burgers vector at 60° to the [11-20} direction
+    Adds interstitial atoms to create a loop with Burgers vector at 60 to the [11-20} direction
     """
-    loop_atoms = []
-    seed_list = get_seeds_60(n0001,n1100,xloop)
+    loop_atoms = [] #holds ids of loop atoms = 4xseed_list
+    catoms = [] #holds ix,iy,iz,ib of loop atoms = 4xseed_list
+    seed_list = get_seeds_60(n0001,n1010,xloop)
+    print("DEBUG seed_list",seed_list,"#DEBUG")
+    iseed = -1
     for seed in seed_list:
-        catoms.append(seed)
-        seed[3] -=1
-        catoms.append(seed)
-        seed[3] -=1; seed[0] +=1
-        catoms.append(seed)
-        seed[3] +=1
-        catoms.append(seed)
-    
+        iseed +=1
+        if seed[3]%2 == 0: print("ERROR: Wrong seed for loop60 constrcution") 
+        catoms.append(list(seed)) #add seed, ib= 1 or 3
+        seed[3] -=1 
+        catoms.append(list(seed)) #add seed+1, ib= 0 or 2, no change in ix,iy,iz
+        if seed[3] == 0:
+            seed[2] -=1 #iz-- 
+            seed[3]  =3 #ib=3
+        elif seed[3] == 2:
+            seed[0] +=1 #ix++
+            seed[3] -=1 #ib--
+        else: print("ERROR: loop60 seed construction")
+        catoms.append(list(seed))
+        if seed[3] == 3:
+            seed[3]  =0 #ib=0
+            seed[0] +=1 #ix++
+            seed[2] +=1 #iz++
+        elif seed[3] == 1:
+            seed[3] +=1 #ib++
+        else: print("ERROR: loop60 seed construction")
+        catoms.append(list(seed))
+        
     for ic in catoms:
         loop_atoms.append(returnid(ic,nx,ny,nz,[0,4]))
         #print("DEBUG-loop \n",atoms[loop_atoms[-1]][4],"\n DEBUG-loop")
         if atoms[loop_atoms[-1]][0] == -1:
             print("Warning: trying to modify ghost atom")
             
-    print("    +found %d atoms for the loop"%(Nloop))
-    shift = [0.05*a*np.cos(60.0/180*np.pi),0.0,0.05*a*np.sin(60.0/180*np.pi)]
+    
+    shift = [0.05*a*0.5,0.0,0.05*a*0.86603]
     add_sias(atoms,loop_atoms,shift)
     #print("DEBUG",loop_atoms,"DEBUG")
-    
-def get_seeds_60(n0001,n1010,xloop):
+    return len(loop_atoms)
+
+def get_seeds_60(n0001,n1100,xloop):
     """
-    Get a list of seed atoms for the construction of a SIA loop lying 60° to the [11-20] direction.
+    Get a list of seed atoms for the construction of a SIA loop lying 60 to the [11-20] direction.
     n1010 and n0001 specify the max-min stacking indices along those two directions
     xloop is the location of the top most segment
     """
     seed_list = []
-    seed = [xloop,n0001[1],n1100[1],3]
     for i0001 in range(n0001[1],n0001[0]-1,-1):
-        seed[1] -= 1
-        for i1100 in range(n1010[1],n1010[0]-1,-1):
-            seed[0] +=1
-            if seed[3] == 1: seed[3] +=2; seed[2] -=1 #ib++, iz-
-            if seed[3] == 3; seed[3] -=2; seed[0] +=1 #ib--, ix++
+        seed = [xloop,i0001,n1100[1],3]
+        seed_list.append(list(seed))
+        for i1100 in range(n1100[1]-1,n1100[0]-1,-1):
+            if   seed[3] == 1: seed[3] +=2; seed[2] -=1; seed[0] +=1 #ib++, iz--, ix++
+            elif seed[3] == 3: seed[3] -=2; seed[0] +=2 #ib--, ix++2
             
-            seed_list.append(seed)
+            seed_list.append(list(seed))
     return seed_list
 
 def add_sias(atoms, loop_atoms, shift):
@@ -600,8 +617,9 @@ def add_sias(atoms, loop_atoms, shift):
     """
     last_index = atoms[-1][0]
     Nloop = len(loop_atoms)
+    print("    +found %d atoms for the loop"%(Nloop))
     print("DEBUG-shift",shift,"DEBUG-shift")
-
+    
     for i in range(Nloop):
         last_index +=1
         oldatom = atoms[loop_atoms[i]]
@@ -609,9 +627,9 @@ def add_sias(atoms, loop_atoms, shift):
         atoms.append([oldatom[0],oldatom[1],oldatom[2],oldatom[3],
                       [oldatom[4][0],oldatom[4][1],oldatom[4][2],oldatom[4][3]]])  #store old position
     
-        for ix in range(3):
-            atoms[loop_atoms[i]][ix] +=  shift[ix]
-            atoms[-1][ix] -= shift[ix]
+        for ix in range(1,4):
+            atoms[loop_atoms[i]][ix] +=  shift[ix-1]
+            atoms[-1][ix] -= shift[ix-1]
         atoms[-1][0] = last_index # fix index of new atoms
         print("DEBUG-new",atoms[loop_atoms[i]],atoms[-1],"DEBUG-new")
 
