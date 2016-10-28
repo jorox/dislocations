@@ -12,6 +12,7 @@ from ovito.modifiers import *
 from ovito.data import *
 from ovito.vis import *
 from PyQt5 import QtCore
+from PyQt5.QtGui import QPainter, QColor, QPen
 import os
 
 # This python script is meant to be run with Ovitos to create 4 movies 
@@ -25,12 +26,22 @@ pers.add_argument("fin", help="Input file", metavar="File-IN")
 pers.add_argument("-r","--range", help="Range", nargs=3, type=int, metavar=("START","END","INCR"))
 pers.add_argument("-o","--output",help="Output File Name base", metavar="FOUT.DIM.avi")
 pers.add_argument("-c","--cna",  help="CNA cutoff", type=float, metavar="CUTOFF")
-pers.add_argument("-t","--time", help="Total length of video in seconds",type=int,metavar="TIME")
+pers.add_argument("-t","--time", help="Total length of video in seconds",type=float,metavar="TIME")
 pers.add_argument("-v", "--vpcount",
                   help="Number of Viewports to output (0=pers,1=pers+front,2=pers+front+top",
                   type=int, default=1)
 pers.add_argument("-d", "--dxa", help="Perform dislocation analyis", action="store_true")
+pers.add_argument("--tdump", help="simulation dump interval in ps",nargs=2, default=[1," "])
 args = pers.parse_args()
+args.tdump[0] = float(args.tdump[0])
+
+
+def tsim_render_overlay(painter, **kargs):
+    txt_color = QColor(255,255,255)
+    painter.setPen(txt_color)
+    tsim = args.tdump[0]*ovito.dataset.anim.current_frame
+    painter.drawText(10,20,"%1.4f %s"%(tsim,args.tdump[1]))
+
 
 # find wild-card in filename
 iwild = args.fin.find("*")
@@ -77,11 +88,11 @@ print("... modifiers added")
 # COMPUTE
 #----------------------------------------------------------
 load = ["\\","|","/","-"]
-N = (args.range[1]-args.range[0])/args.range[2]  #number of video frames
-print("... %1.0d video frames\n    processing:"%(N))
+N_video_frames = (args.range[1]-args.range[0])/args.range[2]  #number of video frames
+print("... %1.0d video frames\n    processing modifiers:"%(N_video_frames))
 for i in range(args.range[0],args.range[1],args.range[2]):
     node.compute(i)
-    prcnt = float(i)/N*100
+    prcnt = float(i)/N_video_frames*100
     print(load[i%4]+ "     %d %%"%(prcnt))
     sys.stdout.write("\033[F")
 
@@ -96,6 +107,7 @@ if args.dxa:
         print(segment.points)
     node.output.particle_properties.position.display = None
     node.output.dislocations.display.enabled = True
+    
 node.add_to_scene()
 cell = node.source.cell
 cell.display.enabled = True
@@ -120,14 +132,15 @@ for ivp in range(args.vpcount):
     tripod.size = 0.1
     tripod.alignment = QtCore.Qt.AlignRight ^ QtCore.Qt.AlignBottom
 
+    tsim_overlay = PythonViewportOverlay(function = tsim_render_overlay)
     # Create an overlay.
-    tstep_text_overlay = TextLabelOverlay(
-        text = str('timestep: [Timestep]'), 
-    alignment = QtCore.Qt.AlignLeft ^ QtCore.Qt.AlignBottom,
-    offset_y = 0.05,
-    font_size = 0.01,
-    text_color = (1,1,1))
-    tstep_text_overlay.source_node = node
+    #tstep_text_overlay = TextLabelOverlay(
+    #    text = str('timestep: [Timestep]'), 
+    #alignment = QtCore.Qt.AlignLeft ^ QtCore.Qt.AlignBottom,
+    #offset_y = 0.05,
+    #font_size = 0.01,
+    #text_color = (1,1,1))
+    #tstep_text_overlay.source_node = node
 
 # Attach overlay to the active viewport.
 #viewport = ovito.dataset.viewports.active_vp
@@ -140,14 +153,18 @@ for ivp in range(args.vpcount):
 #viewport = ovito.dataset.viewports.active_vp
 #viewport.overlays.append(tripod)
     vp.overlays.append(tripod)
-    vp.overlays.append(tstep_text_overlay)
-
+    vp.overlays.append(tsim_overlay)
+    #vp.overlays.append(tstep_text_overlay)
     if args.time is not None:
-        fps = int(N/args.time)
+        fps = int(N_video_frames)/args.time
+        if fps < 1:
+            fps = 1
+            print("--> warning cannot yet use fps lower than 1, resetting fps to 1.0")
+            print("    new video length = %1.2f seconds"%(fps*N_video_frames))
     else:
         fps = 10
     ovito.dataset.anim.frames_per_second = fps
-
+    print("... using %1.4d fps"%(fps))
     rs = RenderSettings(
         filename = args.output+"."+str(vp.type)+".avi",
         size = (1024, 768),
@@ -160,8 +177,9 @@ for ivp in range(args.vpcount):
     else:
         rs.filename=args.output+"."+str(vp.type)+".png"                  #image
 
-    print(rs.range)
     rs.renderer.antialiasing = True
-    print("*** rendering movie: %s, %d fps, %s "%(str(vp.type),fps, str(rs.range)))
+    print("*** rendering movie: %s, %d fps, %s ***"%(str(vp.type),fps, str(rs.range)))
     vp.render(rs)
+    
     print("... done writing to "+os.getcwd()+"/"+rs.filename)
+    
