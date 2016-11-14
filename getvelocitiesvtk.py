@@ -75,7 +75,9 @@ class pnodelist:
         if len(self)==len(other):
             return [self[i].sep(other[i]) for i in range(len(self))]
         else:
-            return -1
+            print("WARNING: sep() pnode-list unequal lists")
+            N = min(len(self),len(other))
+            return [self[i].sep(other[i]) for i in range(N)]
 
     def sort(self, other):
         # calculate distance from every point in other
@@ -101,7 +103,43 @@ class pnodelist:
         else:
             print("WARNING: sorting unequal lists")
 
-                    
+    def better_sort(self,other):
+        """
+        Sort self according to other even if lengths are not equal
+        """
+        #calculate diff matrix
+        old = list(self.pnts) #old points
+        R_diff = []
+        split_event = False
+        merge_event = False
+        if len(self)>len(other):
+            split_event = True
+            N_new_nodes = len(self)-len(other)
+        if len(self)<len(other):
+            merge_event = True
+            
+        for i in range(len(self)):
+            R_diff.append([self[i].sep(other[j]) for j in range(len(other))])
+            
+        R_diff = np.array(R_diff)
+        #return the minimum along the columns
+        pos = np.argmin(R_diff,axis=1) #find min for each row=sorted position
+
+        if split_event:
+            #find "N_new_nodes" nodes with greatest distance from all "other" nodes
+            min_sep = np.amin(R_diff,axis=1) #min separation each node
+            max_ind = np.argsort(min_sep)[-N_new_nodes:] #indices of new nodes with largest separation 
+            #set new nodes to final positions
+            for i in range(N_new_nodes):
+                pos[max_ind[i]] = len(other)+i
+        elif merge_event:
+            print("ERROR: Merge events still not handled")
+
+        #Now sort
+        if np.sum(pos) != np.sum(range(len(self))): print("ERROR: sort_better(): Position-List not unique")
+        for i in range(len(pos)):
+            self.pnts[i] = old[pos[i]]
+        
                     
         
 pers = ArgumentParser()
@@ -177,7 +215,7 @@ for ff in flist:
         nlist.append(point(tags[i],dofs[i],pos[i],vel[i]))
 
     if step>0:
-        nlist.sort(masterlist[step-1])
+        nlist.better_sort(masterlist[step-1])
         #############DEBUGGING###################
         tmp = masterlist[step-1].sep(nlist)
         if np.sum(np.abs(tmp))>20:
