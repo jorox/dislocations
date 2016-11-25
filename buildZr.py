@@ -423,7 +423,7 @@ def buildscrew(atoms,nx,ny,nz,a,box):
         #    elif y < 0: ux = a/2.0 #theta = pi
         #    else: ux = a/2.0
         #else:
-        ux = a/2/np.pi*(np.arctan2(z,y)) #default
+        ux = a/2/np.pi*(myatan(z,y)) #default
         fout.write("\n%1.0f %1.3f %1.3f %1.3f"%(i,z,y,ux/a))
         atoms[i][1] += ux
         atoms[i][1] = wrap_box(atoms[i][1],box[0])
@@ -709,6 +709,24 @@ def wrap_box(x,a):
     if x<a[0]: x = x%a[0] + a[1]
     elif x>=a[1]: x = x%a[1] + a[0]
     return x
+
+def myatan(x,y):
+    PI = np.pi
+    if x>0 and y>=0: #gives 0
+        return np.arctan(y/x)
+    elif x<0 and y>=0: #gives PI
+        return PI-np.arctan(-y/x)
+    elif x<0 and y<0:
+        return PI+np.arctan(y/x)
+    elif x>0 and y<0:
+        return 2*PI-np.arctan(-y/x)
+    else: #x==0:
+        if y>0: return PI/2
+        elif y<0: return 3*PI/2
+        else: return 0
+def get_loop_size(loop_atoms):
+    """ returns an array of 3 elements size of loop in x,y,z
+    """
 
 if __name__=="__main__":
     main()

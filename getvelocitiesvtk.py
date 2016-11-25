@@ -138,7 +138,7 @@ class pnodelist:
         #Now sort
         if np.sum(pos) != np.sum(range(len(self))): print("ERROR: sort_better(): Position-List not unique")
         for i in range(len(pos)):
-            self.pnts[i] = old[pos[i]]
+            self.pnts[pos[i]] = old[i]
         
                     
         
@@ -146,10 +146,19 @@ pers = ArgumentParser()
 
 pers.add_argument("fin", help="input file name pattern containing *", metavar="file-pattern")
 pers.add_argument("-o","--out", help="name of output filename", default="get_v_vtk.dat")
-
+pers.add_argument("-n","--nfiles", help="number of files to use",type=int,default=-1)
+pers.add_argument("-s","--sigeps",help="sigeps file", default="SIGEPS")
 
 args = pers.parse_args()
 
+print("... opening file: %s"%(args.sigeps))
+fsigeps = open(args.sigeps)
+time = [0]
+for line in fsigeps:
+    if line[0].isalpha(): continue
+    time.append(float(line.strip().split()[1]))
+print("      +++found %i time-step"%(len(time)))
+    
 iwild = args.fin.find("*")
 if iwild == -1:
     print("ERROR: no wildcard found in file pattern")
@@ -165,6 +174,8 @@ step = -1
 load = ["\\","|","/","-"]
 
 flist = sorted(flist,key=lambda s: int(s[s.rfind("_")+1:s.rfind(".")]))
+flist = flist[:args.nfiles]
+print("... Using %i files"%(len(flist)))
 #############DEBUGGING###################
 sepout = open("listsep.dat","w")
 sepout.write("#iterative separation between p-node lists")
@@ -240,35 +251,37 @@ for i in range(len(masterlist)):
         maxpnodes = len(masterlist[i])
         biggest_list = i 
 print("... max p-nodes %i in file %i"%(maxpnodes,biggest_list))
-print("   %s"%(masterlist[biggest_list]))
+#print("   %s"%(masterlist[biggest_list]))
 print("... creating output file with %i columns"%(3*maxpnodes))
 
 vout.write("#velocity date from vtk files for %i nodes"%(maxpnodes))
 posout.write("#velocity date from vtk files for %i nodes"%(maxpnodes))
-vout.write("\n#step")
-posout.write("\n#step")
+vout.write("\n#step time(ns)")
+posout.write("\n#step time(ns)")
 tmp = ["x","y","z"] #i/maxpnodes = 0="x" or 1="y" or 2="z"
 for i in range(3*maxpnodes):
-    vout.write(" v%s_%i($%i)"%(tmp[i/maxpnodes],i%maxpnodes+1,i+2)) #x.y.z, 1-->mpn, 2-->3*mpn+1 
-    posout.write(" x%s_%i($%i)"%(tmp[i/maxpnodes],i%maxpnodes+1,i+2))
+    vout.write(" v%s_%i($%i)"%(tmp[i/maxpnodes],i%maxpnodes+1,i+3)) #x.y.z, 1-->mpn, 2-->3*mpn+1 
+    posout.write(" %s_%i($%i)"%(tmp[i/maxpnodes],i%maxpnodes+1,i+3))
     
 step = 0
 dout = open("dout.dat","w")
 dout.write("#debug file, indices")
+i_t = -1
 for ilist in masterlist:
-    
-    vout.write("\n%1.2d"%(step))
-    posout.write("\n%1.2d"%(step))
+    i_t +=1
+    vout.write("\n%1.2d %1.4f"%(step, time[i_t]))
+    posout.write("\n%1.2d %1.4f"%(step, time[i_t]))
     dout.write("\n%1.2d"%(step))
     step += 1
-    N = len(ilist)
+    N = len(ilist) #number of nodes in list
     for i in range(3*maxpnodes):
+        dout.write(" (%i,%i)"%(i%maxpnodes,i/maxpnodes))
         if i%maxpnodes < N: # index exists
-            vout.write(" %1.4f"%(ilist[i%N].v[i/N]))
-            posout.write(" %1.4f"%(ilist[i%N].x[i/N]))
-            dout.write(" (%i,%i)"%(i%N,i/N))
+            vout.write(" %1.4f"%(ilist[i%maxpnodes].v[i/maxpnodes]))
+            posout.write(" %1.4f"%(ilist[i%maxpnodes].x[i/maxpnodes]))
         else: #index doesnot exist (yet)
             vout.write(" NaN")
+            posout.write(" NaN")
 
 print("... done writing to "+vout.name)
             

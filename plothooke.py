@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from math import factorial
 import numpy as np
 import sys
+import os
 import matplotlib.pyplot as plt
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):
@@ -115,6 +116,7 @@ persy.add_argument("-d", "--header", type=int, nargs=1,
 
 persy.add_argument("-t","--title", nargs="*", help="title to print on top of the plot")
 persy.add_argument("-v","--average",help="average data using a window", type=int)
+persy.add_argument("-o","--output",help="output plotted data to file")
 
 args = persy.parse_args()
 print args
@@ -130,6 +132,7 @@ for line in fin:
     if line[0]=="#":
         if nline == args.header:
             xlbl = line.split()[args.x_col-1]
+            if xlbl[0]=="#": xlbl=xlbl[1:]
             ylbl = line.split()[args.y_col-1]
             if args.y2: y2lbl = line.split()[args.y2-1]
             print("... headers: "+xlbl+" "+ylbl)
@@ -158,6 +161,10 @@ if args.factor != " 1":
     y *= float(args.factor)                   #multiply by constant factor
 yhat = savitzky_golay(np.array(y), args.z[0], args.z[1]) # window size 51, polynomial order 3
 print("... %d datapoints"%(len(x)))
+
+
+
+
 
 
 fig = plt.figure()
@@ -214,3 +221,18 @@ elif args.fout is not None:
 else:
     plt.show()
                     
+        
+if args.output is not None:
+    fout = open(args.output,"w")
+    fout.write("#data from plothooke.py for file: %s/%s "+ os.getcwd() +"/"+ args.fin)
+    fout.write("\n#%s %s"%(xlbl,ylbl))
+    if args.smooth: fout.write(" %s_smooth"%(ylbl))
+    if args.y2 is not None: fout.write(" %s"%(y2lbl))
+
+    for i in range(len(y)):
+        fout.write("\n%1.5f %1.5f"%(x[i],y[i]))
+        if args.smooth: fout.write(" %1.5f"%(yhat[i]))
+        if args.y2 is not None: fout.write(" %1.5f"%(y2[i]))
+
+    fout.close()
+    print("... done writing plotted data to "+args.output)

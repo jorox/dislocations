@@ -80,9 +80,9 @@ if not args.dxa:
     node.modifiers.append(DeleteSelectedParticlesModifier())
 else:
     dxamod = DislocationAnalysisModifier()
-    dxamod.input_crystal_type = DislocationAnalysisModifier.Lattice.HCP
+    dxamod.input_crystal_structure = DislocationAnalysisModifier.Lattice.HCP
     node.modifiers.append(dxamod)
-    print("... Dislocation analysis for %s crystal"%(dxamod.input_crystal_type))
+    print("... Dislocation analysis for %s crystal"%(dxamod.input_crystal_structure))
 print("... modifiers added")
     
 # COMPUTE
@@ -90,10 +90,12 @@ print("... modifiers added")
 load = ["\\","|","/","-"]
 N_video_frames = (args.range[1]-args.range[0])/args.range[2]  #number of video frames
 print("... %1.0d video frames\n    processing modifiers:"%(N_video_frames))
+tmp = -1
 for i in range(args.range[0],args.range[1],args.range[2]):
+    tmp += 1
     node.compute(i)
-    prcnt = float(i)/N_video_frames*100
-    print(load[i%4]+ "     %d %%"%(prcnt))
+    prcnt = float(tmp)/N_video_frames*100
+    print(load[tmp%4]+ "     %d %%"%(prcnt))
     sys.stdout.write("\033[F")
 
 
@@ -117,8 +119,9 @@ for ivp in range(args.vpcount):
     vp = Viewport()
     if ivp == 0:
         vp.type = Viewport.Type.PERSPECTIVE
-        vp.camera_pos = (-70, -500, 100)
-        vp.camera_dir = (0.2, 1, -0.25)
+        vp.camera_pos = (326.815, 29.5, 130)
+        vp.camera_dir = (-0.836, 0.337, -0.431)
+        vp.fov = 0.61
     elif ivp ==1:
         vp.type = Viewport.Type.FRONT
         vp.zoom_all()
@@ -156,7 +159,7 @@ for ivp in range(args.vpcount):
     vp.overlays.append(tsim_overlay)
     #vp.overlays.append(tstep_text_overlay)
     if args.time is not None:
-        fps = int(N_video_frames)/args.time
+        fps = int(N_video_frames/args.time)
         if fps < 1:
             fps = 1
             print("--> warning cannot yet use fps lower than 1, resetting fps to 1.0")
