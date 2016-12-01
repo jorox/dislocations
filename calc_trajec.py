@@ -6,6 +6,8 @@ from math import factorial
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
+import glob
+
 
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):
@@ -123,15 +125,12 @@ pers.add_argument("prop",
 pers.add_argument("units",
                   help="data header units", default="A", metavar="UNITS")
 
-pers.add_argument("-m", "--multi",
+pers.add_argument("-r", "--range",
                   help="multiple files", nargs=2, type=int, metavar=("START", "END"))
 pers.add_argument("-o","--output",
                   help="output data", type=str, default="traj.dat")
 pers.add_argument("--dt",
                   help="timestep", nargs=2, metavar=("VALUE","UNITS"))
-pers.add_argument("--zero",
-                  help="Shift x-data to account for wrapping")
-
 
 args = pers.parse_args()
 print args
@@ -147,43 +146,61 @@ out_header += "ysmooth" +"("+args.units+") "  #col3
 out_header += " v("+args.units+"/"+tunits+")" #col4
 fout.write(out_header)
 
+print(args)
+iwild = args.fin.find("*")
+if iwild == -1:
+    print("Warning: ONLY ONE FILE SPECIFIED")
+    args.range = [0,1,1]
+    keys = [args.fin]
+else:    
+    flist = glob.glob(args.fin) #list of filenames
+    print("... %1.0d files found"%(len(flist)))
+    print(iwild+1)
+    if iwild+1==len(args.fin): iend = None
+    else: iend = s.find(args.fin[iwild+1:])
+    keys = [int( s[iwild:iend] ) for s in flist]
+    keys.sort()
+    flist = sorted(flist, key=lambda s: int( s[iwild:iend] )) 
+
+step = -1
 load = ["\\","|","/","-"]
-print("... reading data")
-if args.multi is not None:
-    N = args.multi[1]-args.multi[0]+1
-    y = []
-    wild = args.fin.index("*")
-    t = 0
-    tmp = None
-    for i in range(args.multi[0],args.multi[1]+1):
-        fname = args.fin[:wild]+str(i)+args.fin[wild+1:]
-        tmp = process_single_file(fname,args.prop,tmp,50)
-        y.append(tmp)
-        t += 1
-        prcnt = float(t)/N*100
-        #print(load[i%4]+ "     %d %%"%(prcnt))
-        #sys.stdout.write("\033[F")
 
-    y = np.array(y)
-    #print y
-    #print(np.amin(y))
-    #print(np.argmin(y))
-    #y[np.argmin(y)-1:] -= np.amin(y)
-    #print y
-    ysmooth = savitzky_golay(y,31,3,deriv=0)
-    #dy = savitzky_golay(y,31,3,deriv=1)/float(args.dt[0])
-    dy = np.diff(ysmooth)/float(args.dt[0])
-    
-    for i in range(args.multi[0],args.multi[1]):
-        if args.dt is None:
-            fout.write("\n%1.0d %1.6f %1.6f"%(i,y[i],dy[i]))
-        else:
-            #dy = dy/float(args.dt[0])
-            fout.write("\n%1.6f %1.6f %1.6f %1.6f"%(i*float(args.dt[0]), y[i], ysmooth[i], dy[1]))
-    print("... done writing to "+args.output)
-
+if args.range is not None:
+    N = args.range[1]-args.range[0]+1
+    flist = flist[args.range[0]:args.range[1]+1]
 else:
-    print("Not implemented yet...")
+    N = len(flist)
+print("... using %i files from original"%(N))
+y = []
+
+t = 0
+tmp = None
+
+for i in range(N):
+    fname = flist[i]
+    tmp = process_single_file(fname,args.prop,tmp,50)
+    y.append(tmp)
+    t += 1
+    prcnt = float(t)/N*100
+    #print(load[i%4]+ "     %d %%"%(prcnt))
+    #sys.stdout.write("\033[F")
+
+y = np.array(y)
+#print y
+#print(np.amin(y))
+#print(np.argmin(y))
+#y[np.argmin(y)-1:] -= np.amin(y)
+#print y
+ysmooth = savitzky_golay(y,31,3,deriv=0)
+#dy = savitzky_golay(y,31,3,deriv=1)/float(args.dt[0])
+dy = np.diff(ysmooth)/float(args.dt[0])
+    
+for i in range(N):
+    if args.dt is None:
+        fout.write("\n%1.0d %1.6f %1.6f"%(i,y[i],dy[i]))
+    else:
+        fout.write("\n%1.6f %1.6f %1.6f %1.6f"%(i*float(args.dt[0]), y[i], ysmooth[i], dy[1]))
+print("... done writing to "+args.output)
         
         
         
