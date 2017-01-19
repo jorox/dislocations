@@ -13,6 +13,7 @@ import os
 import glob
 import numpy as np
 from argparse import ArgumentParser
+import decimal
 
 REC_STRUCTURE_TYPES = {"HCP":2}
 class mb:
@@ -58,6 +59,9 @@ class segment:
         self.localb = [x for x in localb]
         self.cluster_id = cluster_id
         self.vertex = list(vertices)
+        self.realb = []
+        self.glide = []
+        self.vertex_index = [-1]*len(vertices)
     def __str__(self):
         tmps = "segment %i:\n%1.3f %1.3f %1.3f\ncluster = %i\n%i vertices"%(
             self.index, self.localb[0], self.localb[1], self.localb[2], self.cluster_id, len(self.vertex))
@@ -76,15 +80,27 @@ class segment:
                     vert[i]= uplimit - (origin[i]-vert[i])
                     res = -1
                 elif vert[i] > uplimit:
-                    vert[i] = origin[i] + (uplimit-vert[i])
+                    vert[i] = origin[i] + (vert[i]-uplimit)
                     res = 1
         return res
+
+    def build_index(self,vert_list):
+    #The function links the segments' vertices with a list provided externally.
+    #This is done after the full vertex list is checked for repetitions and to later
+    #handle entangled nodes, and make the write-out procedure simpler
+    
+        for i in range(len(self.vertex)):
+            for j in range(len(vert_list)):
+                p1 = np.array(self.vertex[i]); p2 = np.array(vert_list[j])
+                if np.sqrt(np.sum((p1-p2)**2))<0.01:
+                    self.vertex_index[i] = j
+                    break
 
 
 pers = ArgumentParser()
 
 pers.add_argument("fin", help="Name of input DXA file")
-pers.add_argument("-o","--out", help="Name of output file")
+pers.add_argument("-o","--out", help="Name of output file",default="dx2graphout")
 
 args = pers.parse_args()
 
@@ -169,20 +185,68 @@ while True:
             print("     "+str(line))
         print("-------------- end junctions list -------------------")
         continue
+
+########################### Supplementary functions ###########################################
+
+def sanity_check(junc,seg):
+    """ The function gives the sum of Burgers vectors at junctions nodes
+    The positive sense is taken to lead away from the node, and the negative is pointing 
+    towrds it. Three sums must be done for each junction node: the parent Burger and the
+    remote Burger to the parent node, and the parent Burger to the remote node. The positive sense
+    is taken to be that leading away from the node"""
+    if len(junc)%2 != 0: print("ERROR: CANNOT PERFORM SANITY CHECK, NOT EVEN");sys.exit()
+    junc_sum_list = np.array([[0.0]*4]*(len(junc)))
+    
+    for iseg in range(0,len(junc)/2,1):
+        for iextrem in range(2):
+            ijunc = 2*iseg+iextrem # junction belongs to segment iseg
+            sign1 = 2*iextrem-1          # 1st extreme points to the node
+            sign2 = -2*junc[ijunc][0]+1  # 0 gives positive, 1 gives negative
         
+            junc_sum_list[ijunc] += sign1*np.array(seg[iseg].realb)  #add to node the parent Burger
+            junc_sum_list[ijunc] += sign2*np.array(seg[junc[ijunc][1]].realb) #add to node the externalB
+            ijunc = 2*junc[ijunc][1]-junc[ijunc][0]+1
+            junc_sum_list[ijunc] += sign1*np.array(seg[iseg].realb) #add to external node the parent B
+            #print(ijunc); print(seg[iseg].realb)
+    for sum_check in junc_sum_list:
+        print(str([round(tmp,2) for tmp in sum_check]))
+
+def mb_norm(a):
+    """ function calculates the norm of an mb vector
+    """
+    return np.sqrt(np.sum(np.array(a)**2)-a[0]*a[1]-a[0]*a[2]-a[1]*a[2])
+                
+###############################################################################################
+
 ### Create Distinct Node List
 list_node = []
 for i_dis in range(len(list_disloc)):
     d = list_disloc[i_dis]
     for i_vert in range(len(d.vertex)):
         skip_vert = False
-        if (i_dis>0 and i_vert==0) or (i_dis>0 and i_vert==1):
+        if (i_dis>0 and i_vert==0) or (i_dis>0 and i_vert==len(d.vertex)-1):
             for i_junc in range(2*i_dis):
                 if list_junc[i_junc] == [i_vert,i_dis]: skip_vert = True
-        if skip_vert: continue
+        if skip_vert: continue             #repeat vertex => skip
         list_node.append(list(d.vertex[i_vert]))
 
 print("\n... %i distinct nodes for %i segments"%(len(list_node),len(list_disloc)))
+for node in list_node:
+    print(node)
+print("\n... Building vertex index list for each segment")
+
+### Build vertex indices for segments
+##  This step will associate each vertex in each segment with a vertex in the unique list
+##  before the wrapping procedure
+for d in list_disloc:
+    d.build_index(list_node)
+    for iv in range(len(d.vertex_index)):
+        if d.vertex_index[iv] == -1:
+            print("ERROR: in segment %i vertex %i: cannot find index"%(d.index,iv))
+            print(d.vertex[iv])
+            sys.exit()
+print("   done building index")
+
 
 ### Determine the true Burgers vector for each dislocation
 ##  Calculate the Spatial Burgers Vector by multiplying the
@@ -211,6 +275,7 @@ for d in list_disloc:
             #print("     "+str(spcb))
             list_trueb.append(trueb)
             list_spceb.append(spceb)
+            d.realb = [bi for bi in trueb]
             break #cluster found - stop searching
         #if cluster has not been found
     if found_cluster == False:
@@ -234,16 +299,130 @@ for d,spcb in zip(list_disloc,list_spceb):
     tmp = np.cross(tmp,spcb)
     tmp = 3.*X*tmp[0] + 3.*Y*tmp[1] + 3.*Z*tmp[2]
     tmp = tmp/np.max(np.abs(tmp))
-    print("    %i) -- "+ str(tmp))
+    print("    %i) -- "%(d.index)+ str(tmp))
+    d.glide = [hi for hi in tmp]
     i +=1
-
-### Wrap vertices for dislocations passing through a periodic boundary
-##
+    
+### Wrap vertices passing through a periodic boundary
+##   Some dislocations pass through a periodic boundary and their
+##   vertices are unwrapped. The function wrap_vert will check for these
+##   vertices which are outside the box limits, assuming that the box is
+##   orthogonal, and will re-wrap them inside the box.
 print("\n... Wrapping dislocations: +/-1 wrapped positive/negative, 0 no wrapping")
 for d in list_disloc:
     res = d.wrap_vert(sc_origin,sc_matrix)
-    print("    %i) -- %i"%(i,res))
+    print("    %i) -- %i"%(d.index,res))
     i+=1
+print("\n... New segments:")
+for d in list_disloc:
+    print("\n-----------------------\n"+str(d))
                 
-            
+### Split segments running across periodic boundaries
+##  As stated before there might be some segments which pass through a periodic
+##  boundary. After re-wrapping the vertices of such segements it is necessary
+##  to split eah segment into two because NUMODIS cannot handle periodic
+##  boundaries. The same Burgers and orientation are given to each segment.
+##  *** Each segment is split only ONCE
+sc_uplim = [0,0,0]
+list_entang_nodes = []
+for i in range(3):
+    sc_uplim[i] = sc_matrix[i][i]+sc_origin[i]
+
+print("\n... box upper-limits along X,Y,Z (orthogonal) = %1.2fA, %1.2fA, %1.2fA"%(
+    sc_uplim[0],sc_uplim[1], sc_uplim[2]))
+Nseg = len(list_disloc)
+
+for iseg in range(Nseg):
+    d = list_disloc[iseg]
+    Nvert = len(d.vertex)
+    split_segment = False
+    for ivert in range(Nvert-1):
+        for ix in range(3):
+            if abs(d.vertex[ivert+1][ix]-d.vertex[ivert][ix])>sc_matrix[ix][ix]/2:
+                print("    ---splitting segment %i at node %i across dimension %i"%(d.index,ivert,ix))
+                new_verts = list(d.vertex[ivert+1:])
+                new_vertex_index = list(d.vertex_index[ivert+1:])
+                new_index = len(list_disloc)
+                list_disloc.append(segment(new_index,d.localb,d.cluster_id,new_verts))
+                list_disloc[-1].realb = d.realb
+                list_disloc[-1].glide = d.glide
+                list_disloc[-1].vertex_index = list(new_vertex_index)
+                d.vertex = list(d.vertex[:ivert+1])
+                d.vertex_index = list(d.vertex_index[:ivert+1])
+                list_entang_nodes.append([d.vertex_index[-1],list_disloc[-1].vertex_index[0]])
+                split_segment = True
+                break
+        if split_segment: break
         
+print("DEBUG: uplimit = " + str(sc_uplim))
+for vert in list_node:      #wrap vertex
+    for ix in range(3):
+        if vert[ix] < sc_origin[ix]:
+            vert[ix]= sc_uplim[ix] - (sc_origin[ix]-vert[ix])
+        elif vert[ix] > sc_uplim[ix]:
+            vert[ix] = sc_origin[ix] + (vert[ix]-sc_uplim[ix])
+            
+print("\n... Wrapped Node list:")
+for node in list_node:
+    print(str(node))
+print("-------------- end WRAPPED NODE --------------------")
+print("\n... New segment list:")
+for d in list_disloc:
+    print("\n-------------------------\n"+str(d))
+print("\n... Entangled nodes:")
+for enode in list_entang_nodes:
+    print(str(enode)+" ---> "+str(list_node[enode[0]]) + " $$ " + str(list_node[enode[1]]) )
+
+print("\n... writing to "+args.out+".xml")
+fout = open(args.out+".xml","w")
+spc = "    "
+
+fout.write("<?xml version=\"1.0\" ?>")
+fout.write("\n<root>")
+fout.write("\n"+spc+"<nodes>")
+i=0
+for node in list_node:
+    fout.write("\n"+spc+spc+"<node pinned=\"0\" tag=\"%i\" x=\"%1.15f\" y=\"%1.15f\" z=\"%1.15f\" />"%(
+        i,node[0], node[1], node[2]))
+    i+=1
+fout.write("\n"+spc+"</nodes>")
+fout.write("\n"+spc+"<lines>")
+
+for seg in list_disloc:
+    b = [round(6*tmp) for tmp in seg.realb]
+    xi = [round(tmp) for tmp in seg.glide]
+    fout.write("\n"+spc+spc+"<line bh=\"%i\" bi=\"%i\" bk=\"%i\" bl=\"%i\" tag=\"%i\">"%(
+               b[0],b[1],b[2],b[3],seg.index))
+
+    fout.write("\n"+spc+spc+spc+"<constraints>")
+    fout.write("\n"+spc+spc+spc+spc+"<plane h=\"%i\" i=\"%i\" k=\"%i\" l=\"%i\" />"%(
+               xi[0],xi[1],xi[2],xi[3]))
+    fout.write("\n"+spc+spc+spc+"</constraints>")
+
+    #partial
+    if mb_norm(np.array(b)/6)<0.9:
+        if np.abs(np.sum(np.array(b)**2)-8) > 0.2:
+            print("WARNING: partial dislocation index %i different than <-1100>"%(seg.index)) 
+        fout.write("\n"+spc+spc+spc+"<stackingfaults>")
+        fout.write("\n"+spc+spc+spc+spc+"<sf h=\"%i\" k=\"%i\" i=\"%i\" l=\"%i\" direction=\"%i\" type=\"I2\" />"%(
+            xi[0],xi[1],xi[2],xi[3],-xi[3])) #the direction follows the "l" param of the glide direction
+        fout.write("\n"+spc+spc+spc+"</stackingfaults>")
+    
+    fout.write("\n"+spc+spc+spc+"<nodes>")
+    for inode in seg.vertex_index:
+        fout.write("\n"+spc+spc+spc+spc+"<node tag=\"%i\" />"%(inode))
+    fout.write("\n"+spc+spc+spc+"</nodes>")
+    fout.write("\n"+spc+spc+"</line>")
+fout.write("\n"+spc+"</lines>")
+
+fout.write("\n"+spc+"<entangled_nodes>")
+for enode in list_entang_nodes:
+    fout.write("\n"+spc+spc+"<node tag1=\"%i\" tag2=\"%i\" />"%(enode[0],enode[1]))
+fout.write("\n"+spc+"</entangled_nodes>")
+
+fout.write("\n</root>")
+print("... done writing to "+fout.name)
+
+print("... Sanity check on junctions:")
+sanity_check(list_junc,list_disloc)
+print("------------------ end sanity check ---------------------")

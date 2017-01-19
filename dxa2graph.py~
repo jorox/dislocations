@@ -1,0 +1,70 @@
+"""
+This program transforms a DXA file to a graph file for DD simulation
+"""
+import sys
+import os
+import glob
+import numpy as np
+from argparse import ArgumentParser
+
+REC_STRUCTURE_TYPES = {"HCP":2}
+
+class cluster:
+    def __init__(self,index,stype,A):
+        self.index = index
+        self.stype = stype
+        self.A = np.array(A) #matrix is defined row by row
+
+class segment:
+    def __init__(self,index,localb,cluster_id,vertices):
+        self.index = index
+        self.localb = [x for x in localb]
+        self.cluster_id = cluster_id
+        self.vertex = list(vertices)
+
+
+pers = ArgumentParser()
+
+pers.add_argument("fin", help="Name of input DXA file")
+pers.add_argument("-o","--out", help="Name of output file")
+
+args = pers.parse_arguments()
+
+### Reading DXA file
+#----------------------------------------------------------------
+fin = open(args.fin)
+print("... Reading DXA file: "+args.fin)
+clusters = []
+
+while True:
+    line = fin.readline()
+    if line = "": break #EOF
+    line = line.strip().split()
+    
+    # Simulation cell dimensions
+    if line[0] == "SIMULATION_CELL_ORIGIN":
+        sc_origin = [float(tmp) for tmp in line[1:4]]
+        sc_matrix = []
+        continue
+    if line[0] == "SIMULATION_CELL_MATRIX":
+        for i in range(3):
+            line = fin.readline().strip().split()
+            sc_matrix.append([float(x) for x in line])
+
+    # Clusters
+    if line[0] == "CLUSTER":
+        cluster_mat = []
+        cluster_index = int(line[1]) # cluster index
+        line = fin.readline().strip().split() #cluster structure
+        cluster_stype = int(line[1])
+        line = fin.readline() #CLUSTER_ORIENTATION
+        for i in range(3):
+            line = fin.readline().strip().split()
+            cluster_mat.append([float(tmp) for tmp in line])
+        if cluster_stype == REC_STRUCTURE_TYPES["HCP"]:
+            clusters.append(cluster(cluster_index,cluster_stype,cluster_mat))
+                
+        
+        
+        
+    
