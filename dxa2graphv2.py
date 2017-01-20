@@ -66,6 +66,10 @@ class node:
         self.coords[key] = val
     def __str__(self):
         return "%i %1.3f, %1.3f, %1.3f"%(self.tag,self.coords[0],self.coords[1],self.coords[3])
+    def __add__(self,p2):
+        return [x+y for x,y in zip(self.coords,p2.coords)]
+    def __sub__(self,p2):
+        return [x-y for x,y in zip(self.coords,p2.coords)]
         
 class cluster:
     def __init__(self,index,stype,A):
@@ -106,6 +110,61 @@ class segment:
 
 
 class configuration:
-    def __init__(self,list_nodes,list_segments,list_junctions,topo):
+    def __init__(self,list_vertices,list_segments,list_junctions,topo):
+        self.nodes = []
+        #######################################################################
+        # wrap vertices across boundaries and create the list of nodes
+        # self.nodes contains references to node objects
+        # The list is ordered by appearance of nodes in segment information
+        # Repetition is handeled by having the same object address
+        #######################################################################
+        for vertex in list_vertices:
+            # wrap vertices if needed across the boundaries
+            data = [vertex[0],None,None,None]
+            for ix in range(3):
+                if vertex[ix+1]<topo[0][ix]: data[ix+1] = vertex[ix+1]-topo[0][ix]+topo[1][ix] # x<origin
+                elif vertex[ix+1]>topo[1][ix]: data[ix+1] = vertex[ix+1]-topo[1][ix]+topo[0][ix] # x>limit
+                else: data[ix+1] = vertex[ix+1]
 
-        #
+            # check for repetition, a tolerance is added because some repeated nodes might get wrapped
+            #  hence the coordinates are not exactly the same
+            found = False
+            if len(self.nodes)>0:
+                for i_node in self.nodes:
+                    if np.sum(np.abs(i_node-node(data))) < 0.1: #same point
+                        self.nodes.append(i_node) #add the same address to the list
+                        found = True
+                        break
+                    
+            if found == False: self.nodes.append(node(coords)) #new node
+
+        ######################################################################
+        # Determine the true Burgers vector for each dislocation
+        #  Calculate the Spatial Burgers Vector by multiplying the
+        #  local Burgers vector by the matrix of the cluster
+        #  divide the spatial-b by the lattice spacings along the 3 main directions
+        ######################################################################
+        self.segments = []
+        X = [1./3,1./3,-2./3,0.]; Z = [-1.,1.,0.,0.]; Y = [0.,0.,0.,1.]
+        box_spc = [3.232,5.165,3.232*np.sqrt(3)]
+        print("\n... principla directions and spacings along")
+        print("     X = "+str(X)+"  "+str(box_spc[0])+" A")
+        print("     Y = "+str(Y)+"  "+str(box_spc[1])+" A")
+        print("     Z = "+str(Z)+"  "+str(box_spc[2])+" A")
+        X = np.array(X); Y = np.array(Y); Z = np.array(Z)
+        
+        for d in list_segments:
+            tmp = np.array(d[1])
+            tmp = np.array(list_clusters[d[2]][2:5]).dot(tmp) # left-multiply local Burgers by rotation matrix
+            for i in range(3):  tmp[i] /= box_spc[i] # get scaled-spatial Burgers vector
+            trueb = X*tmp[0] + Y*tmp[1] + Z*tmp[2] # transform to mb notation
+
+            
+            d.realb = [bi for bi in trueb]
+            break #cluster found - stop searching
+        #if cluster has not been found
+    if found_cluster == False:
+            print("ERROR: Could not find cluster %i for segment %i"%(d.cluster_id,d.index))
+                
+print("--------------- end True Burgers section ------------------")
+        
