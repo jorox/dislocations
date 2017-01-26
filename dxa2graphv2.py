@@ -189,29 +189,34 @@ class configuration:
         ivert = 0                                                 #index to first vertex of current segment
         
         for d in list_segments:
-            spcb = np.array(d[1])                                 # spatial Burgers vector
-            N_verts = d[3]                                        # number of vertices
-            idcluster = d[2]-1                                    # cluster id
+            tmp = np.array(d[1])                                 # spatial Burgers vector
+            N_verts = d[3]                                       # number of vertices
+            idcluster = d[2]-1                                   # cluster id
 
             # Burgers vector
-            tmp=np.array(list_clusters[idcluster][2:5]).dot(spcb) # left-mult local Burgers by rotation matrix
-            for i in range(3):  tmp[i] /= box_spc[i]              # scale vector (no units)
-            trueb = 6.0*(X*tmp[0] + Y*tmp[1] + Z*tmp[2])                # transform to mb notation
+            rotmat = np.array(list_clusters[idcluster][2:5])
+            spcb = rotmat.dot(tmp)                                  # left-mult local Burgers by rotation matrix
+            for i in range(3):  spcb[i] = spcb[i]/box_spc[i]       # scale vector (no units)
+            trueb = 6.0*(X*spcb[0] + Y*spcb[1] + Z*spcb[2])         # transform to mb notation
 
             # Determine glide plane normal
-            sens = np.diff(d[4:4+N_verts],axis=0)                 # calculate partial sense vectors
-            sens = np.sum(sens,axis=0)                            # sum
-            sens = sens/N_verts                                   # average
-            #for i in range(3): sens[i] /= box_spc[i]              # scale vector (no units)
-            #sens = sens/np.max(np.abs(sens))
+            sens = np.diff(d[4:4+N_verts],axis=0)                      # calculate partial sense vectors
+            sens = np.sum(sens,axis=0)                                 # sum
+            sens = sens/N_verts                                        # average
+            b2pr = (np.sqrt(2)*sens[1])/np.sqrt(sens[0]**2+sens[2]**2) # basal/prismatic ratio
+            if b2pr < 1.0: sens[1] = 0
+            normsens = np.linalg.norm(sens)
+            for i in range(3): sens[i] = sens[i]/box_spc[i]    # scale vector (no units)
+            #for i in range(3): sens[i] /= normsens            # normalize vector
             print("########## DEBUG ###########")
             print(sens)
-            print(sens[0]*X+sens[1]*Y+sens[2]*Z)
+            print(spcb)
+            print(b2pr)
             truexi = np.cross(spcb,sens)
+            print(truexi)
             truexi = 3.0*(X*truexi[0] + Y*truexi[1] + Z*truexi[2])      # transform xi to mb
-            print((truexi[0]*X+truexi[1]*Y+truexi[2]*Z))
+            print(truexi)
             print("########## DEBUG ###########")
-            truexi = truexi/np.max(np.abs(truexi))
 
             # Vertex list
             truevertex = list(self.nodes[ivert:ivert+N_verts])
@@ -393,5 +398,5 @@ print("-----------END SEGMENT LIST----------------")
 
 xmldata = cnfg.build_xml_tree()
 
-print(prettify(xmldata))
+#print(prettify(xmldata))
 
