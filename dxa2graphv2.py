@@ -7,6 +7,10 @@ Assumptions:
      This is to help in wrapping vertices across the periodic boundaries
  ** Main directions are set
      X=[11-20], Z=[-1100], Y=[0001]
+ *** Only one type of stacking fault is recognized I2 (basal)
+ *** Need to deal with glide plane for screw dislocations
+ *** Need to with hikl-->hkil (correct) in XML output
+ *** Glide plane normals need to be integers or decimal free floats
 """
 import sys
 import os
@@ -97,11 +101,12 @@ class segment:
     * xi = normal to glide plane
     * vertices = a list containing links to the nodes that belong to the segment
     """
-    def __init__(self,index,b_coords,xi_coords,vertices):
+    def __init__(self,index,b_coords,xi_coords,vertices,ispart):
         self.index = index
         self.b = mb(b_coords)
         self.xi = mb(xi_coords)
         self.vertices = list(vertices)
+        self.ispartial = ispart
         
     def __str__(self):
         tmps = "segment %i:\n  6*b= %1.3f %1.3f %1.3f %1.3f\n  6*xi= %1.3f %1.3f %1.3f %1.3f\n  vertices { "%(
@@ -163,6 +168,7 @@ class configuration:
                     self.count+=1
 
         self.segments = []
+        self.partials = []
         ############################################################################
         # Determine the true Burgers vector for each dislocation
         #  Calculate the Spatial Burgers Vector by multiplying the
@@ -194,10 +200,14 @@ class configuration:
             idcluster = d[2]-1                                   # cluster id
 
             # Burgers vector
-            rotmat = np.array(list_clusters[idcluster][2:5])
+            ispart = False                                          # non-perfect Burgers
+            rotmat = np.array(list_clusters[idcluster][2:5])        # Rotation matrix for Burgers
             spcb = rotmat.dot(tmp)                                  # left-mult local Burgers by rotation matrix
-            for i in range(3):  spcb[i] = spcb[i]/box_spc[i]       # scale vector (no units)
+            for i in range(3):  spcb[i] = spcb[i]/box_spc[i]        # scale vector (no units)
+            for ispcb in range(3):
+                if np.abs(spcb[ispcb]-int(spcb[ispcb])) > 0.05: ispart = True
             trueb = 6.0*(X*spcb[0] + Y*spcb[1] + Z*spcb[2])         # transform to mb notation
+            self.partials.append(ispart)
 
             # Determine glide plane normal
             sens = np.diff(d[4:4+N_verts],axis=0)                      # calculate partial sense vectors
@@ -214,13 +224,15 @@ class configuration:
             print(b2pr)
             truexi = np.cross(spcb,sens)
             print(truexi)
+            fac = (truexi[0]+truexi[2])/(truexi[0]-truexi[2])
+            print(fac)
             truexi = 3.0*(X*truexi[0] + Y*truexi[1] + Z*truexi[2])      # transform xi to mb
             print(truexi)
             print("########## DEBUG ###########")
 
             # Vertex list
             truevertex = list(self.nodes[ivert:ivert+N_verts])
-            self.segments.append(segment(d[0],trueb,truexi,truevertex))
+            self.segments.append(segment(d[0],trueb,truexi,truevertex,ispart))
             ivert = ivert+N_verts
 
         self.entangled_nodes = []
@@ -244,18 +256,20 @@ class configuration:
                         continue
                     else: #not first point
                         if pnt_out != first_out: #changed location (can be inside or outside)
-                            self.segments.append(segment(d.index,d.b,d.xi,d.vertices[iv:]))
+                            self.segments.append(segment(d.index,d.b,d.xi,d.vertices[iv:],d.ispartial))
+                            self.partials.append(d.ispartial)
                             self.entangled_nodes.append([d.vertices[iv-1],d.vertices[iv]])
+                            print("   ****splitting segment %i at node #%i-tag:%i"%(d.index,iv,d.vertices[iv].tag))
                             d.vertices = d.vertices[:iv]
-                            print("   ****splitting segment %i at node %i"%(d.index,iv))
                             break
 
         #############################################################################
         # wrap nodes across periodic boundaries
         #############################################################################
-        for vertex in self.nodes:
-            if vertex[ix]<topo[0][ix]: vertex[ix] = vertex[ix]-topo[0][ix]+topo[1][ix] # x<origin
-            elif vertex[ix]>topo[1][ix]: vertex[ix] = vertex[ix]-topo[1][ix]+topo[0][ix] # x>limit
+        for ix in range(3):
+            for vertex in self.nodes:
+                if vertex[ix]<topo[0][ix]: vertex[ix] = vertex[ix]-topo[0][ix]+topo[1][ix] # x<origin
+                elif vertex[ix]>topo[1][ix]: vertex[ix] = vertex[ix]-topo[1][ix]+topo[0][ix] # x>limit
 
         print("... Done building configuration")
         
@@ -279,17 +293,30 @@ class configuration:
         xml_lines = SubElement(xml_root,"lines")
         for seg in self.segments:
             xml_line = SubElement(xml_lines,"line",{
-                           "bh":str(seg.b[0]),
-                           "bk":str(seg.b[1]),
-                           "bi":str(seg.b[2]),
-                           "bl":str(seg.b[3]),
+                           "bh":str(int(seg.b[0])),
+                           "bk":str(int(seg.b[1])),
+                           "bi":str(int(seg.b[2])),
+                           "bl":str(int(seg.b[3])),
                            "tag":str(seg.index)})
             xml_constraint = SubElement(xml_line,"constraints")
+            
+            tmp = list(seg.xi)
+            for i in range(4): tmp[i] = round(tmp[i],0)   # round to nearest integer
+            tmp[2] = -(tmp[0]+tmp[1])                     # Miller-Bravais
+            
             xml_plane = SubElement(xml_constraint,"plane",{
-                           "h":str(seg.xi[0]),
-                           "k":str(seg.xi[1]),
-                           "i":str(seg.xi[2]),
-                           "l":str(seg.xi[3])})
+                           "h":str(tmp[0]),
+                           "k":str(tmp[1]),
+                           "i":str(tmp[2]),
+                           "l":str(tmp[3])})
+            
+            if seg.ispartial:
+                #print("PARTIAL FOUND")
+                xml_sf = SubElement(xml_line, "stackingfaults")
+                SubElement(xml_sf,"sf",{
+                    "h":str(tmp[0]), "k":str(tmp[1]), "i":str(tmp[2]), "l":str(tmp[3]),
+                     "direction":str(tmp[3]), "type":"I2"})
+                
             xml_line_nodes = SubElement(xml_line,"nodes")
             for vert in seg.vertices:
                 SubElement(xml_line_nodes,"node",{"tag":str(vert.tag)})
@@ -297,8 +324,8 @@ class configuration:
         xml_entangled = SubElement(xml_root,"entangled_nodes")
         for enode in self.entangled_nodes:
             tmp = SubElement(xml_entangled,"node",{
-                    "tag1":str(enode[0]),
-                    "tag2":str(enode[1])})
+                    "tag1":str(enode[0].tag),
+                    "tag2":str(enode[1].tag)})
 
         return xml_root
 
@@ -326,7 +353,7 @@ pers = ArgumentParser()
 
 pers.add_argument("fin", help="Name of input DXA file")
 pers.add_argument("-o","--out", help="Name of output file",
-                  default="dx2graphout")
+                  default="dx2graphout.xml")
 
 args = pers.parse_args()
 
@@ -397,6 +424,9 @@ for iseg in range(len(cnfg.segments)):
 print("-----------END SEGMENT LIST----------------")
 
 xmldata = cnfg.build_xml_tree()
-
+fout = open(args.out,"w")
+fout.write(prettify(xmldata))
+print("... done writing output to %s"%(fout.name))
+print("    %i nodes, %i segments of which %i partials"%(len(cnfg.nodes),len(cnfg.segments),np.sum(cnfg.partials)))
 #print(prettify(xmldata))
 
