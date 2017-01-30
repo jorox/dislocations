@@ -217,16 +217,20 @@ class configuration:
             if b2pr < 1.0: sens[1] = 0
             normsens = np.linalg.norm(sens)
             for i in range(3): sens[i] = sens[i]/box_spc[i]    # scale vector (no units)
-            #for i in range(3): sens[i] /= normsens            # normalize vector
+
             print("########## DEBUG ###########")
-            print(sens)
-            print(spcb)
+            print("sense = " + str(sens))
+            print("spcb = " + str(spcb))
             print(b2pr)
             truexi = np.cross(spcb,sens)
-            print(truexi)
+            print("cross = " + str(truexi))
+            truexi /= np.linalg.norm(truexi)
+            print("norm corss = " + str(truexi))
             fac = (truexi[0]+truexi[2])/(truexi[0]-truexi[2])
             print(fac)
             truexi = 3.0*(X*truexi[0] + Y*truexi[1] + Z*truexi[2])      # transform xi to mb
+            for itx in range(4): truexi[itx] = round(truexi[itx],0)
+            if truexi[3]<0 : truexi[3] = -truexi[3]
             print(truexi)
             print("########## DEBUG ###########")
 
@@ -328,8 +332,6 @@ class configuration:
                     "tag2":str(enode[1].tag)})
 
         return xml_root
-
-            
 
 
 #########################################################################
