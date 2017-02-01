@@ -11,6 +11,8 @@ Assumptions:
  *** Need to deal with glide plane for screw dislocations
  *** Need to with hikl-->hkil (correct) in XML output
  *** Glide plane normals need to be integers or decimal free floats
+ *** Partial burgers vectors are identified by significant decimal component in any of their spatial Burgers
+     vector componenets
 """
 import sys
 import os
@@ -187,6 +189,7 @@ class configuration:
         
         X = [1./3,1./3,-2./3,0.]; Z = [-1.,1.,0.,0.]; Y = [0.,0.,0.,1.]
         box_spc = [3.232,5.165,3.232*np.sqrt(3)]
+        self.X = X; self.Y = Y; self.Z = Z
         print("\n... principla directions and spacings along")
         print("     X = "+str(X)+"  "+str(box_spc[0])+" A")
         print("     Y = "+str(Y)+"  "+str(box_spc[1])+" A")
@@ -260,10 +263,11 @@ class configuration:
                         continue
                     else: #not first point
                         if pnt_out != first_out: #changed location (can be inside or outside)
-                            self.segments.append(segment(d.index,d.b,d.xi,d.vertices[iv:],d.ispartial))
+                            self.segments.append(segment(len(self.segments),d.b,d.xi,d.vertices[iv:],d.ispartial))
                             self.partials.append(d.ispartial)
                             self.entangled_nodes.append([d.vertices[iv-1],d.vertices[iv]])
-                            print("   ****splitting segment %i at node #%i-tag:%i"%(d.index,iv,d.vertices[iv].tag))
+                            print("   ****splitting segment %i at node #%i-tag:%i"%(
+                                d.index,iv,d.vertices[iv].tag))
                             d.vertices = d.vertices[:iv]
                             break
 
@@ -277,6 +281,51 @@ class configuration:
 
         print("... Done building configuration")
         
+    def fix_nodes_plane(self):
+        """
+        The function fixes the coordinates of the nodes belonging to each segment to all be
+        in the same glide plane.
+        In MD the nodes can be slightly outside the same glide plane (in parallel planes).
+        Numodis will block in such a case
+        The function will calculate the equation of the plane using the normal to the plane
+        i.e. the xi[] vector and a point. The point chosen will be the average of the nodes 
+        belonging to the segment. 
+        if xi = [a,b,c] and p=[x0,y0,z0] then plane s: 0=ax+by+cz+d where d = -ax0-by0-cz0
+        Then say we want the projection of point A=[x1,y1,z1] to A'=[x2,y2,z2]
+        we can say that the line (AA') has the parametric equation: (x=x1+mt, y=y1+nt, z=z1+pt)
+        but the direction (AA') is parallel to xi. Hence, the coordinates of A' are
+        (x2=x1+at, y2=y1+bt, z2=z1+ct).
+        To find "t" we note that the coordinates of A' satisfy the equation of the plane:
+        t = - (d+ax1+by1+cz1)/(a**2+b**2+c**2) = - (a(x1-x0)+b(y1-y0)+c(z1-z0))/(a**2+b**2+c**2)
+        """
+        # get the a1,a2,a3,a4 in terms of XYZ to transform xi to XYZ rep.
+        a1 = np.array([2,-1,-1,0]); a2=np.array([-1,2,-1,0]); a3=np.array([-1,-1,2,0]); a4=np.array([0,0,0,1])
+        repmat = np.array([self.X,self.Y,self.Z])
+        repmat = np.transpose(repmat)
+        repmat = np.linalg.inv(repmat) # [X|Y|Z]a = [ ]
+        a1xyz = np.dot(repmat,a1); a2xyz=np.dot(repmat,a2); a3xyz=np.dot(repmat,a3); a4xyz=np.dot(repmat,a4)
+        print("########### DEBUG ###########")
+        print("a1 = "+str(a1xyz))
+        print("a2 = "+str(a2xyz))
+        print("a3 = "+str(a3xyz))
+        print("a4 = "+str(a4xyz))
+        print("##############################")
+        for seg in self.segments:
+            # find xi in XYZ rep
+            n = a1xyz*xi[0] + a2xyz*xi[1] + a3xyz*xi[2] + a4xyz*xi[3]
+            p0 = np.array([0.,0.,0.])
+            for tmp_node in seg.vertices:
+                p0 += np.array(tmp_node.coords)
+            p0 /= len(seg.vertices)
+            for iv in range(len(seg.vertices)):
+                p1 = np.array(seg.vertices[iv].coords)
+                tmp = p1-p0
+                t = -(xi[0]*tmp[0]+xi[1]*tmp[1]+xi[2]*tmp[2])/(np.sum(xi**2))
+                seg.vertices[iv].coords = list(p1+xi*t)
+                print("############ DEBUG - fix_nodes_plane #############")
+                print("old = "+str(p1))
+                print("new = "+str(seg.vertices[iv].coords))
+                print("##################################################")
         
     def build_xml_tree(self):
         
