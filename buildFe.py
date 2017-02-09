@@ -23,29 +23,46 @@ class crystalbasis:
                    [X.dot(e3)/Xnorm, Y.dot(e3)/Ynorm, Z.dot(e3)/Znorm] ]
         rotmat = np.array(rotmat) #rotational matrix for the change of basis
 
-        minh = int(min([X[0],Y[0],Z[0]])-1)
-        mink = int(min([X[1],Y[1],Z[1]])-1)
-        minl = int(min([X[2],Y[2],Z[2]])-1)
-        maxh = int(max([X[0],Y[0],Z[0]])+1)
-        maxk = int(max([X[1],Y[1],Z[1]])+1)
-        maxl = int(max([X[2],Y[2],Z[2]])+1)
-        motif = []
-        print(minh,maxh,mink,maxk,minl,maxl)
+        minh = int(min([X[0],Y[0],Z[0]]))-2
+        mink = int(min([X[1],Y[1],Z[1]]))-2
+        minl = int(min([X[2],Y[2],Z[2]]))-2
+        maxh = int(max([X[0],Y[0],Z[0]]))+2
+        maxk = int(max([X[1],Y[1],Z[1]]))+2
+        maxl = int(max([X[2],Y[2],Z[2]]))+2
+        self.motif = []
+        new_motif = []
+        self.motif.append([0,0,0])
+        new_motif.append([0,0,0])
         print("########### DEBUG motif-find ############")
+        print(minh,maxh,mink,maxk,minl,maxl)
+        print(" ")
         for l in range(minl,maxl,1):
             for k in range(mink,maxk,1):
                 for h in range(minh,maxh,1):
                     for convbasis in self.conv_motif:
+                        newpnt = True
                         tmp1 = np.array([h,k,l])+convbasis
                         tmp2 = (rotmat[0]*tmp1[0]+
                                rotmat[1]*tmp1[1]+
                                rotmat[2]*tmp1[2])
                         tmp2 /= [Xnorm, Ynorm, Znorm]
-                        if (tmp2[0]<=1.01 and tmp2[1]<=1.01 and tmp2[2]<=1.01 and
-                        tmp2[0]>0 and tmp2[1]>0 and tmp2[2]>0):
-                            print(tmp1)
-                            print(tmp2)
-                            motif.append(tmp2)
+                        tmp2 = [round(x,4) for x in tmp2]
+                        for i in range(3):
+                            if np.abs(tmp2[i]-1.0)<0.1: tmp2[i] = 0.0
+                            
+                        if (tmp2[0]<1 and tmp2[1]<1 and tmp2[2]<1 and
+                        tmp2[0]>=0 and tmp2[1]>=0 and tmp2[2]>=0):
+                            for imot in range(len(new_motif)):
+                                if np.sqrt(np.sum((np.array(new_motif[imot])-tmp2)**2))<0.01:
+                                    newpnt = False
+                                    break
+                            if newpnt:
+                                print("%s <-- %s"%(tmp2,tmp1))
+                                self.motif.append(list(tmp1))
+                                new_motif.append(tmp2)
+                            
+        
+        self.motif = np.array(self.motif)
         print("#########################################")
         
     def __init__(self,X,Y,Z):
@@ -74,6 +91,8 @@ class crystalbasis:
                    self.a[1]*self.motif[i,1]+
                    self.a[2]*self.motif[i,2])
             tmp /= [Xnorm, Ynorm, Znorm]
+            for j in range(3):
+                if np.abs(tmp[j]-1.0)<0.11: tmp[j]=0
             self.motif_XYZ.append(tmp)
         print("\n         !!  Debug Info - motif_xyz  !!\n!!----------------------------!!")
         for tmp in self.motif_XYZ: print(tmp)
@@ -246,8 +265,8 @@ def main():
     
 # create the edge dislocation
     if createedge:
-        print("\n /////////////// Building Edge dislocation \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
-        nghost = buildedge1120(atoms,nx,ny,nz,xspacing,box)
+        print("\n /////////////// Building 111 Edge dislocation \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        nghost = buildedge111(atoms,nx,ny,nz,[xspacing,yspacing,zspacing],box)
         natoms -= nghost
         print("... new box dimensions along X: %1.4f %1.4f"%(box[0,0],box[0,1]))
         print("... %1.0f atoms, %1.0f ghost atoms"%(natoms,nghost))
@@ -353,29 +372,31 @@ def main():
 
 #################################################################################################
 
-def buildedge1120(atoms,nx,ny,nz,spacing,box):
+def buildedge111(atoms,nx,ny,nz,spacing,box):
     zcut = (nz[1]+nz[0])/2.0
-    N = nx[1]-nx[0]
+    N = 2*(nx[1]-nx[0])
     xcut = nx[1]-1
-    xmin = nx[0]*spacing
+    xmin = nx[0]*spacing[0]
     nghost = 0
     exx1 = -0.5/N
     exx2 = 0.5/(N-1)
 
     for ia in range(len(atoms)):
         iz=atoms[ia][4][2]; iy = atoms[ia][4][1]; ix=atoms[ia][4][0]; ib = atoms[ia][4][3]
-        if iz>zcut or (iz==zcut and ib>0):
+        xunit =(atoms[ia][1]-ix*spacing[0])/spacing[0] #the relative position of the atom in its unit cell
+        
+        if iz>zcut :
             atoms[ia][1] += (atoms[ia][1]-xmin)*exx1
         else:
-            if ix==xcut:
+            if ix==xcut and xunit>0.49:
                 atoms[ia][0] = -1
                 nghost +=1
                 continue
             else:
                 atoms[ia][1] += (atoms[ia][1]-xmin)*exx2
+        
 
-
-    box[0][1] -= 0.5*spacing
+    box[0][1] -= 0.25*spacing[0]
     return nghost
 
 
