@@ -1,0 +1,3 @@
+#velocity date from vtk files for 6 nodes
+#step vx_1($2) vx_2($3) vx_3($4) vx_4($5) vx_5($6) vx_6($7) vy_1($8) vy_2($9) vy_3($10) vy_4($11) vy_5($12) vy_6($13) vz_1($14) vz_2($15) vz_3($16) vz_4($17) vz_5($18) vz_6($19)
+00 0.0000 0.0000 0.0000 0.0000 NaN NaN 0.0000 0.0000 0.0000 0.0000 NaN NaN

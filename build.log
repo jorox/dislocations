@@ -1,11 +1,11 @@
-... reading input file zrxtal.txt
+... reading input file fextal.txt
 ... orienting crystal
      X/Y/Z directions: 
-     spacings (A): 3.23412, 5.16798, 5.60166
-     number of unit cells in XYZ directions: 16 2 8
+     spacings (A): 4.94674, 6.99574, 4.03899
+     number of unit cells in XYZ directions: 16 20 20
 ... box dimensions (A):
-     X -25.87296 --> 25.87296 
-     Y 0.00000 --> 10.33596 
-     Z -22.40664 --> 22.40664
+     X -39.57390 --> 39.57390 
+     Y -69.95743 --> 69.95743 
+     Z -40.38994 --> 40.38994
 
-... done writing 990 atoms to file Zr.xyz
+... done writing 76800 atoms to file Fe.xyz

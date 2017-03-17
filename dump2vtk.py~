@@ -1,0 +1,14 @@
+import sys
+from argparse import ArgumentParser
+
+pers = ArgumentParser()
+
+pers.add_argument("fin", help="Input file", metavar="File-IN motif")
+pers.add_argument("-o", "--output", metavar="File-OUT motif", default="batchdxa")
+
+args = pers.parse_args()
+
+d = dump(args.fin)
+
+
+

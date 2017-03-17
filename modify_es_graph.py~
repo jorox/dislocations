@@ -1,0 +1,138 @@
+import sys
+import os
+import glob
+import numpy as np
+from argparse import ArgumentParser
+import inspect
+from xml.etree import ElementTree as ET
+
+dir2ind = {"x": 0, "y":1, "z":2, "X":0, "Y":1, "Z":2}
+
+class node(object):
+    def __init__(self,tag,pinned,x):
+        self.tag = tag
+        self.pinned = pinned
+        self.x = []
+        for i in range(3): self.x.append(x[i])
+
+    def __str__(self):
+        return "%i pinned=%i [%1.4f, %1.4f, %1.4f]"%(self.tag, self.pinned, self.x[0],
+                                                     self.x[1], self.x[2])
+
+        
+class nodelist:
+    def __init__(self):
+        self.nodes = []
+        self.box_lim = [[1,1,1],[-1,-1,-1]]
+    def __getitem__(self,i):
+        return self.nodes[i]
+    def add_node(self,p_node):
+        if (isinstance(p_node,node)):
+            eps = 1e-5
+            #check box limits
+            for ix in range(3):
+                if p_node.x[ix] > self.box_lim[1][ix]:
+                    self.box_lim[1][ix] = p_node.x[ix]
+                    #check negative limits
+                if p_node.x[ix] < self.box_lim[0][ix]:
+                    self.box_lim[0][ix] = p_node.x[ix]
+            self.nodes.append(p_node)
+        else:
+            print("Error: cannot add object, is not instance of class: node")
+
+
+    def wrap_nodes(self,dirks):
+        """
+        wrap the nodes along specific directions to inside the box limits.
+        This could be required because of a previous "displace" command  
+        The function is intended for internal command only but can be used externally
+        However, dirks in this case cannot be a string
+        dirks <> 0 to 2 (inclusive)
+        """
+        for inode in self.nodes:
+            for ix in dirks:
+                if inode.x[ix] < self.box_lim[0][ix]: #node outside to the left
+                    tmp = self.box_lim[0][ix]-inode.x[ix]
+                    tmp = tmp % (self.box_lim[1][ix]-self.box_lim[0][ix])
+                    inode.x[ix] = self.box_lim[1][ix] - tmp
+                    print(">>> wrapping node %i along +%i to %1.4f"%(
+                        inode.tag,ix,inode.x[ix]))
+                          
+                elif inode.x[ix] > self.box_lim[1][ix]: #node outside to the right
+                    tmp = inode.x[ix]-self.box_lim[1][ix]
+                    tmp = tmp % (self.box_lim[1][ix]-self.box_lim[0][ix])
+                    inode.x[ix] = self.box_lim[0][ix] + tmp
+                    print(">>> wrapping node %i along +%i to %1.4f"%(
+                        inode.tag,ix,inode.x[ix]))
+            
+    def displace(self,dirk,val):
+        """
+        displace the nodes along a specific direction (with rewrapping)
+        dirk = x,y,z
+        """
+        idirk = dir2ind[dirk]
+        print(">>> WARNING: displacing nodes along %s, limits = %1.5f-->%1.5f by %1.4f"%(
+            dirk, self.box_lim[0][idirk],self.box_lim[1][idirk], val))
+        
+        for i in range(len(self.nodes)): self.nodes[i].x[idirk] += val
+        self.wrap_nodes([idirk]) # wrap nodes
+                
+    
+######################################################################################### #########################################################################################           
+
+pers = ArgumentParser()
+
+pers.add_argument("fin", help="input file name")
+pers.add_argument("--dx", help="displace nodes along X", type=float)
+pers.add_argument("-o", "--fout", help="ouput file name")
+
+args = pers.parse_args()
+
+fin = ET.parse(args.fin)
+print("... opening XML file "+args.fin)
+nodes = nodelist()
+num_nodes = 0
+
+for child in fin.iter():
+    if child.tag == "node" and len(child.attrib) > 3:
+        pinned = True
+        x = []
+        if child.attrib["pinned"] == 0: pinned = False
+        tag = int(child.attrib["tag"])
+        for s in ["x","y","z"]: x.append(float(child.attrib[s]))
+        tmp = node(tag,pinned, x)
+        nodes.add_node(tmp)
+        num_nodes += 1
+
+print("... done reading %i nodes"%(num_nodes))
+print("box limits: \n    %1.4f --> %1.4f\n    %1.4f --> %1.4f\n    %1.4f --> %1.4f"%(
+    nodes.box_lim[0][0],nodes.box_lim[1][0],
+    nodes.box_lim[0][1],nodes.box_lim[1][1],
+    nodes.box_lim[0][2],nodes.box_lim[1][2]))
+for i in range(num_nodes):
+    print str(nodes[i])
+
+
+if args.dx is not None:
+    nodes.displace("x", args.dx) #displace the nodes
+    print("... displaced nodes along x by %1.5f"%(args.dx))
+    for i in range(num_nodes): print str(nodes[i])
+    
+    # Modify the XML
+    ichild = -1
+    for child in fin.iter():
+        if child.tag == "node" and len(child.attrib) > 3:
+            ichild += 1
+            if int(child.attrib["tag"]) == nodes[ichild].tag: #tags match
+                child.attrib["x"] = "%1.16f"%(nodes[ichild].x[0]) #modify the x-coordinate
+            else:
+                print("ERROR: inconsistent tags - XML or node list order modified")
+                print("Original file not modified")
+                exit
+    print("... original XML successfully modified")
+        
+if args.fout is not None:
+    fin.write(args.fout)
+    print("... done writing XML to file %s"%(args.fout))
+
+

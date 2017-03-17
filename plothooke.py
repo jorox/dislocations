@@ -127,10 +127,16 @@ fin = open(args.fin)
 print("... opening "+args.fin)
 nline = 0
 
+#############################################################################
+# First read line by line the input file specified
+# Get the axes titles from line number = #args.header
+# Get the data corresponding to the columns specied in args.x_col,y_col and
+# possibly y2
+#############################################################################
 for line in fin:
     nline +=1
-    if line[0]=="#":
-        if nline == args.header:
+    if line[0]=="#":                                          # if first character on line is # ==> header
+        if nline == args.header:                              # line number to determine headers
             xlbl = line.split()[args.x_col-1]
             if xlbl[0]=="#": xlbl=xlbl[1:]
             ylbl = line.split()[args.y_col-1]
@@ -139,11 +145,19 @@ for line in fin:
         continue
 
     line = line.strip().split()
-    x.append(float(line[args.x_col-1]))
+    x.append(float(line[args.x_col-1]))                       # columns are 1-based. Subtract 1 to correct
     y.append(float(line[args.y_col-1]))
     if args.y2:
         y2.append(float(line[args.y2-1]))
 
+###############################################################################
+# Perform the following on y-data (in order)
+#   1. Change data to np.array
+#   2. Average data if requested (different than smoothing!!)
+#   3. Zero the data if requested (Substract first y-value from all y-data)
+#   4. Scale the data if requested (Multiply by a constant factor all y-data)
+#   5. Smooth data - output if requested
+###############################################################################
 x = np.array(x); y = np.array(y)   #change to np arrays
 if args.average is not None:
     s = len(y)/args.average #number of windows
@@ -163,38 +177,38 @@ yhat = savitzky_golay(np.array(y), args.z[0], args.z[1]) # window size 51, polyn
 print("... %d datapoints"%(len(x)))
 
 
-
-
-
+###############################################################################
+# Start plotting the date
+##############################################################################
 
 fig = plt.figure()
 if args.title is not None:
-    plt.title(args.title[0])
-ax1 = fig.add_subplot(111)
-ax1.plot(x,y,label=args.label, marker='.', linestyle='None')
+    plt.title(args.title[0])                                     #title for the graph
+ax1 = fig.add_subplot(111)                                       #split figure into a 1-by-1 subplot -pick 1st
+ax1.plot(x,y,label=args.label, marker='.', linestyle='None')     #plot original y-data
 if args.smooth:
     print("... smoothing")
-    ax1.plot(x,yhat, color="red", label="smoothed Savitzky-Golay "+str(args.z))
+    ax1.plot(x,yhat, color="red", label="smoothed Savitzky-Golay "+str(args.z)) #plot the smoothed data
 
 #ax1.legend(loc="upper right", frameon=True)
-ax1.set_xlabel(xlbl)
-ax1.set_ylabel(ylbl)
+ax1.set_xlabel(xlbl) #add x-label from header
+ax1.set_ylabel(ylbl) #add y-label from header
 
 marker_style = dict(color='cornflowerblue', linestyle=':', marker='o',
-                    markersize=7, markerfacecoloralt='gray')
+                    markersize=7, markerfacecoloralt='gray')              #marker for movie
 
-if args.x2 is not None:
+if args.x2 is not None:                                                   #add top-x axis by scaling bottom x-ax
     ax2 = ax1.twiny()
     ax2.set_xticks(ax1.get_xticks())
     ax2.set_xticklabels(np.array(ax1.get_xticks())*float(args.x2[0]))
     ax2.set_xlabel(args.x2[1])
 
-if args.y2 is not None:
+if args.y2 is not None:                                                   #option to add y2-data
     ax3 = ax1.twinx()
-    ax3.plot(x,y2,color="black",marker="s", linestyle="None")
+    ax3.plot(x,y2,color="black",marker="s", linestyle="None")             #plot y2-data
     ax3.set_ylabel(y2lbl)
 
-if args.movie is not None:
+if args.movie is not None:                                                #make a movie of marker running
     load=["\\","|","/","-"]
     print("... making snapshots")
     a1 = ax1.plot(x[0],y[0], fillstyle='full', **marker_style)
@@ -215,14 +229,14 @@ if args.movie is not None:
         print(load[i%4]+ "     %d %%"%(prcnt))
         sys.stdout.write("\033[F")
 
-elif args.fout is not None:
+elif args.fout is not None:                         #option to write out an image
     print("... saving to file "+args.fout)
     plt.savefig(args.fout)
 else:
     plt.show()
                     
         
-if args.output is not None:
+if args.output is not None:                         #option to write out smoothed/averaged y-data and y2-data
     fout = open(args.output,"w")
     fout.write("#data from plothooke.py for file: %s/%s "+ os.getcwd() +"/"+ args.fin)
     fout.write("\n#%s %s"%(xlbl,ylbl))

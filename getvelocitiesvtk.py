@@ -10,14 +10,19 @@ class point:
         self.v = [s for s in v]
         self.tag = tag
         self.dof = dof
+        self.vld = True
 
     def isPhysical(self):
         if self.dof == 1:
             return True
         else:
             return False
-    def sep(self,other):
-        return np.sum((np.array(self.x)-np.array(other.x))**2)**0.5
+    def isValid(self):
+        return self.vld
+    def notValid(self):
+        self.vld = False
+    def sep(self,other,w):
+        return np.sum( (np.array(self.x)-np.array(other.x))**2*np.array(w) )**0.5
     def __lt__(self,other):
         return NotImplemented
     def __gt__(self,other):
@@ -27,9 +32,9 @@ class point:
     def __ge__(self,other):
         return NotImplemented
     def __eq__(self,other):
-        return self.tag == other.tag
+        return self.sep(other)<1e-5
     def __ne__(self,other):
-        return self.tag != other.tag
+        return self.sep(other)>1e-5
     def __str__(self):
         return "%i, %i, [%1.2f,%1.2f,%1.2f], [%1.2f,%1.2f,%1.2f]"%(self.tag,self.dof,
                                                                        self.x[0],self.x[1],self.x[2],
@@ -42,11 +47,6 @@ class pnodelist:
         self.current = 0
 
     def append(self,newpnt):
-        if newpnt.isPhysical() == False:
-            return 0
-        for i in range(len(self.pnts)):
-            if newpnt == self.pnts[i]:
-                return 0
         self.pnts.append(newpnt)
         
     def __len__(self):
@@ -70,14 +70,15 @@ class pnodelist:
 
     def __getitem__(self,i):
         return self.pnts[i]
-    
-    def sep(self,other):
-        if len(self)==len(other):
-            return [self[i].sep(other[i]) for i in range(len(self))]
-        else:
-            print("WARNING: sep() pnode-list unequal lists")
+
+    def sep(self,other,wghts):
+        if len(self)!=len(other):
             N = min(len(self),len(other))
-            return [self[i].sep(other[i]) for i in range(N)]
+            print("WARNING: trying to calculate difference between unequal lists. Using minimum length")
+        else: N = len(self)
+        tmp = [-1]*N
+        for i in range(N): tmp[i] = self.pnts[i].sep(other.pnts[i],wghts)
+        return tmp
 
     def sort(self, other):
         # calculate distance from every point in other
@@ -103,13 +104,15 @@ class pnodelist:
         else:
             print("WARNING: sorting unequal lists")
 
-    def better_sort(self,other):
+    def better_sort(self,other,wghts,debug=None):
         """
-        Sort self according to other even if lengths are not equal
+        Sort self according to other even if number of elements in self and other are different
         """
+        if len(self)==1 and len(other)==1: return #1 physical node -- unchanged -- do nothing
+        if debug is None: debug = False
         #calculate diff matrix
         old = list(self.pnts) #old points
-        R_diff = []
+        R_diff = [] #matrix of distances between all nodes (all permutations, unsorted)
         split_event = False
         merge_event = False
         if len(self)>len(other):
@@ -117,30 +120,57 @@ class pnodelist:
             N_new_nodes = len(self)-len(other)
         if len(self)<len(other):
             merge_event = True
+            N_merged_nodes = len(other)-len(self)
             
-        for i in range(len(self)):
-            R_diff.append([self[i].sep(other[j]) for j in range(len(other))])
+        for snode in self.pnts:
+            R_diff.append([])
+            for onode in other.pnts:
+                R_diff[-1].append(snode.sep(onode,wghts))
             
         R_diff = np.array(R_diff)
         #return the minimum along the columns
-        pos = np.argmin(R_diff,axis=1) #find min for each row=sorted position
+        pos = np.argmin(R_diff,axis=1) #find min for each row=sorted position, can have repetitions and omitions
 
         if split_event:
             #find "N_new_nodes" nodes with greatest distance from all "other" nodes
+            print("+++ better_sort(): Split event: %i new nodes"%(N_new_nodes))
             min_sep = np.amin(R_diff,axis=1) #min separation each node
-            max_ind = np.argsort(min_sep)[-N_new_nodes:] #indices of new nodes with largest separation 
+            max_ind = np.argsort(min_sep)[-N_new_nodes:] #indices of new nodes with largest separation
+            
             #set new nodes to final positions
             for i in range(N_new_nodes):
                 pos[max_ind[i]] = len(other)+i
         elif merge_event:
-            print("ERROR: Merge events still not handled")
-
+            ### In case of a merge event invalidate point and keep last position
+            # Find unused positions
+            tmp = 0
+            print("+++ better_sort(): Merge event: %i nodes lost"%(N_merged_nodes))
+            for i in range(len(other)):
+                if i not in pos:
+                    tmp +=1
+                    self.append(point(other[i].tag,other[i].dof,other[i].x,other[i].v))
+                    pos = np.append(pos,i)
+            if tmp != N_merged_nodes:
+                print(">>> ERROR: better_sort() unhandeled event during merge event"); sys.exit()
+        if debug:
+            print("################## DEBUG ####################")
+            print(pos)
+            for i in range(len(other)): print(other.pnts[i])
+            print("#-------------NEW--------------")
+            for i in range(len(self)): print(self.pnts[i])
+            print("#------------R-diff------------")
+            for i in range(len(R_diff)): print(R_diff[i].tolist())
+            print("#############################################")
+            
         #Now sort
-        if np.sum(pos) != np.sum(range(len(self))): print("ERROR: sort_better(): Position-List not unique")
-        for i in range(len(pos)):
+        if np.sum(pos) != np.sum(range(len(self))):
+            print(">>> ERROR: sort_better(): Position-List not unique"); sys.exit()
+        for i in range(len(old)):
             self.pnts[pos[i]] = old[i]
-        
-                    
+
+            
+#### Main program
+#---------------------------------------------------------------------------------------
         
 pers = ArgumentParser()
 
@@ -148,6 +178,12 @@ pers.add_argument("fin", help="input file name pattern containing *", metavar="f
 pers.add_argument("-o","--out", help="name of output filename", default="get_v_vtk.dat")
 pers.add_argument("-n","--nfiles", help="number of files to use",type=int,default=-1)
 pers.add_argument("-s","--sigeps",help="sigeps file", default="SIGEPS")
+pers.add_argument("-w","--weights", help="modify the contribution of xyz when calculating separation", nargs=3,
+                  type = float, default=(1.,1.,1.))
+pers.add_argument("-d","--debug", help="output information helpful for debugging",
+                  default=False, action="store_true")
+pers.add_argument("-c","--com", help="Do not sort the list of nodes, just output the center of mass coordinates",
+                  action="store_true", default=False)
 
 args = pers.parse_args()
 
@@ -220,17 +256,32 @@ for ff in flist:
                 vel.append([float(s) for s in line])
 
         line = fvtk.readline()
-    
-    nlist = pnodelist()
-    for i in range(npoints):
-        nlist.append(point(tags[i],dofs[i],pos[i],vel[i]))
 
-    if step>0:
-        nlist.better_sort(masterlist[step-1])
+    # create list for a file
+    nlist = pnodelist()
+    if args.com == False:
+        for i in range(npoints):
+            if dofs[i] != 1: continue #avoid non-physical nodes
+            if tags[i] in tags[:i]: continue #avoid repetitions by checking tags!
+            nlist.append(point(tags[i],dofs[i],pos[i],vel[i]))
+    else:
+        comx= np.array([0.0,0.0,0.0])
+        comv = np.array([0.0,0.0,0.0])
+        for i in range(npoints):
+            comx += np.array(pos[i])
+            comv += np.array(vel[i])
+        comx /= npoints
+        comv /= npoints
+        nlist.append(point(-1,1,comx,comv))
+        
+    print("step %i: %i nodes"%(step,len(nlist)))
+    
+    if step>0 and args.com==False:
+        nlist.better_sort(masterlist[step-1],args.weights,args.debug)
         #############DEBUGGING###################
-        tmp = masterlist[step-1].sep(nlist)
-        if np.sum(np.abs(tmp))>20:
-            print("WARNING: Iteration Invalid Separation")
+        tmp = masterlist[step-1].sep(nlist,args.weights)
+        if np.sum(np.abs(tmp))>20*np.sqrt(np.sum(args.weights)):
+            print(">>> WARNING: Possible invalid separation after sorting list step %i"%(step))
         sepout.write("\n%1.2d %1.4f %1.4f %1.4f %1.4f"%(step,tmp[0],tmp[1],tmp[2], tmp[3]))
         #########################################
     masterlist.append(nlist)
@@ -238,12 +289,11 @@ for ff in flist:
     if step == 0:
         print(nlist)
         print("... initial physical nodes %i"%(len(nlist)))
-    prcnt = float(step)/len(flist)*100
-    #print(load[step%4]+ "     %d %%"%(prcnt))
-    #sys.stdout.write("\033[F")
 
 
-
+    
+#### Output
+#-----------------------------------------------------------------------
 maxpnodes = 0
 biggest_list = -1
 for i in range(len(masterlist)):
@@ -283,7 +333,9 @@ for ilist in masterlist:
             vout.write(" NaN")
             posout.write(" NaN")
 
+if args.com: print("... calculated COM data")
 print("... done writing to "+vout.name)
+
             
     
                 

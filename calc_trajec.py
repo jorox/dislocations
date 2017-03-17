@@ -81,13 +81,15 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     return np.convolve( m[::-1], y, mode='valid')
 
 
-def process_single_file(fname,head_name,oldav,cutoff):
+def process_single_file(fname,head_name,oldav,step,name):
+    
     fin = open(fname)
     count = 0
     natoms = 0
     col    = -1
     av = 0.0
     i_boxlow = 6
+    xc = []
     
     if head_name == "y": i_boxlow += 1
     if head_name == "z": i_boxlow += 2
@@ -97,21 +99,21 @@ def process_single_file(fname,head_name,oldav,cutoff):
             natoms = int(line)
             continue
         if count == i_boxlow:
-            boxlength = float(line.strip().split()[1])-float(line.strip().split()[0])
+            line = line.strip().split()
+            lower = float(line[0])
+            upper = float(line[1])
+            boxlength = upper-lower
+            boxcenter = (upper+lower)/2.0
         if count == 9: 
             header = line.strip().split()
             col = header.index(head_name)-2
             continue
         if count > 9:
             tmp = float(line.strip().split()[col])
-            if oldav is not None and tmp<(oldav-cutoff):
-                #print oldav,tmp
-                tmp += boxlength
-                #input("Press Enter to continue...")
+            xc.append(tmp)
                 
-            av += tmp
-    
-    av /= natoms
+    av = np.average(xc)
+        
     fin.close()
     return av
 
@@ -131,6 +133,8 @@ pers.add_argument("-o","--output",
                   help="output data", type=str, default="traj.dat")
 pers.add_argument("--dt",
                   help="timestep", nargs=2, metavar=("VALUE","UNITS"))
+pers.add_argument("--cont","-c",help="Make trajectory continuos",default=False,
+                  action="store_true")
 
 args = pers.parse_args()
 print args
@@ -178,7 +182,7 @@ tmp = None
 
 for i in range(N):
     fname = flist[i]
-    tmp = process_single_file(fname,args.prop,tmp,50)
+    tmp = process_single_file(fname,args.prop,tmp,i,fname)
     y.append(tmp)
     t += 1
     prcnt = float(t)/N*100
@@ -186,6 +190,16 @@ for i in range(N):
     #sys.stdout.write("\033[F")
 
 y = np.array(y)
+
+if args.cont:
+    y -= y[0]
+    for iy in range(1,len(y)):
+        if y[iy]>y[iy-1]+20:
+            y[iy:] -= y[iy]-y[iy-1]
+        elif y[iy]<y[iy-1]-20:
+            y[iy:] += y[iy-1]-y[iy]
+        
+
 #print y
 #print(np.amin(y))
 #print(np.argmin(y))
