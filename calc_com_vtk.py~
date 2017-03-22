@@ -1,0 +1,79 @@
+""" Python script calculates the COM position of dislocation configuration from
+VTK files. Writes position versus time to a text file
+"""
+import numpy as np
+import sys
+import glob
+import os
+from argparse import ArgumentParser
+
+pers = ArgumentParser()
+
+pers.add_argument("fpattern",
+                  help="Filename pattern of VTK files. Must constain *",)
+pers.add_argument("--dt",
+                  help="Timestep in nanoseconds",type=float,default=1)
+pers.add_argument("--out","-o",
+                  help="output filename, default=com_vtk.dat",
+                  default="com_vtk.dat")
+
+args = pers.parse_args()
+print(args)
+
+######### wildcard index
+iwild = args.fpattern.find("*")
+if iwild == -1:
+    print("ERROR: Filename pattern must constain '*'")
+    sys.exit()
+flist = glob.glob(args.fpattern) #non-sorted file list
+print("... %1d files found"%(len(flist)))
+
+######### Sort flist
+if iwild+1==len(args.fpattern): #'*' at the end of the pattern
+    iend = None
+else:
+    keys = []
+    for s in flist:
+        iend = s.find(args.fpattern[iwild+1:]) #find sub-string after wildcard
+        keys.append(int(s[iwild:iend])) #get substring wildcard represents
+        
+    flist = [fname for (tmp,fname) in sorted(zip(keys,flist))] #sort flist based on keys
+    
+
+######### Loop over VTK files
+fout = open(args.out,"w")
+fout.write("#COM Position data using calc_com_vtk.py")
+fout.write("\n#t x y z")
+fout.write("\n#ns A A A")
+
+for fname in flist:
+    ifile = 0
+    fin = open(fname)
+    fdat = [] #list of point coordinates
+    npoints = -1
+    print("     processing %s"%(fname))
+    
+    for line in fin:
+        line = line.strip().split()
+        if len(line) < 1 : continue
+        
+        if line[0] == "POINTS":
+            if npoints == -1: 
+                npoints = int(line[1]) #number of points
+                continue
+            else:
+                print("ERROR READING FILE %s. Duplicate POINTS SECTION"%(fname))
+                sys.exit()
+                
+        if npoints>0 and len(fdat)<npoints : #line represents point info
+            fdat.append([float(x) for x in line])
+            continue
+
+        if len(fdat)==npoints:
+            com = np.sum(fdat,0)/npoints
+            ifile += 1
+            fout.write("\n%1.3f %1.4f %1.4f %1.4f"%(ifile*args.dt,com[0],com[1],
+                                                  com[2]))
+
+print("... Done writing to file %s, %i steps"%(args.out,len(flist)))
+                

@@ -3,6 +3,7 @@ Python code to modify node coordinates in <graph> type files
 Code capabilities: 
   * shift along X direction (with periodic wrapping, entagelement should be corrected manually)
   * set several node coordinates to their average value (create a straight dislocation)
+  * merge two segments
 """
 import sys
 import os
@@ -15,10 +16,11 @@ from xml.etree import ElementTree as ET
 dir2ind = {"x": 0, "y":1, "z":2, "X":0, "Y":1, "Z":2}
 
 class node(object):
-    def __init__(self,tag,pinned,x):
-        self.tag = tag
+    def __init__(self,tag,seg,pinned,x):
+        self.tag = tag #node tag
+        self.seg = seg #tag of segment it belongs to
         self.pinned = pinned
-        self.x = []
+        self.x = [] #coordinates
         for i in range(3): self.x.append(x[i])
 
     def __str__(self):
@@ -171,7 +173,7 @@ if args.ave is not None:
 ##### Modify the XML
 ichild = -1
 for child in fin.iter():
-    if child.tag == "node" and len(child.attrib) > 3: #find all valid node children (with coords)
+    if child.tag == "node" and len(child.attrib) > 3: #find all "valid" node children i.e. with coords
         ichild += 1
         if int(child.attrib["tag"]) == nodes[ichild].tag: #tags match
             child.attrib["x"] = "%1.16f"%(nodes[ichild].x[0]) #modify the x-coordinate

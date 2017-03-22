@@ -316,7 +316,8 @@ for d in list_disloc:
 print("\n... New segments:")
 for d in list_disloc:
     print("\n-----------------------\n"+str(d))
-                
+
+""" No longer required Infinite lines have been implemeneted in NUMODIS   
 ### Split segments running across periodic boundaries
 ##  As stated before there might be some segments which pass through a periodic
 ##  boundary. After re-wrapping the vertices of such segements it is necessary
@@ -372,6 +373,7 @@ for d in list_disloc:
 print("\n... Entangled nodes:")
 for enode in list_entang_nodes:
     print(str(enode)+" ---> "+str(list_node[enode[0]]) + " $$ " + str(list_node[enode[1]]) )
+"""
 
 print("\n... writing to "+args.out+".xml")
 fout = open(args.out+".xml","w")
@@ -416,8 +418,8 @@ for seg in list_disloc:
 fout.write("\n"+spc+"</lines>")
 
 fout.write("\n"+spc+"<entangled_nodes>")
-for enode in list_entang_nodes:
-    fout.write("\n"+spc+spc+"<node tag1=\"%i\" tag2=\"%i\" />"%(enode[0],enode[1]))
+#for enode in list_entang_nodes:
+#    fout.write("\n"+spc+spc+"<node tag1=\"%i\" tag2=\"%i\" />"%(enode[0],enode[1]))
 fout.write("\n"+spc+"</entangled_nodes>")
 
 fout.write("\n</root>")
