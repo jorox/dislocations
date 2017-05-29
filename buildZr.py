@@ -1,5 +1,6 @@
 import numpy as np
 import sys
+import pbcdipole as pd
 
 ver = "09"
 
@@ -128,6 +129,7 @@ def main():
     createloop = False
     createscrew = False
     createloop60 = False
+    createswdipole = False
     load=["\\","|","/","-"]
 
 
@@ -186,6 +188,9 @@ def main():
         if line[0]=="n1010":
             print("      ++loop n1010 direction changed")
             n1010 = np.array(line[1:3],dtype='int')
+        if line[0] == "swdipole":
+            print("      ++periodic screw dipole along the x-direction")
+            createswdipole = True
         if line[0]=="Temp" or line[0]=="temp" :
             print("      ++found temperature")
             T = int(line[1])
@@ -283,7 +288,15 @@ def main():
         fixids(atoms)
         
         print("/\\\\\\\\\\/////////\\\\\\\\\\//////////\\\\\\\\\\/////////////")
-    
+
+    if createswdipole:
+        print("////////////////// Building PBC dipole \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        box = [[nx[0]*xspacing,nx[1]*xspacing],
+               [ny[0]*yspacing,ny[1]*yspacing],
+               [nz[0]*zspacing,nz[1]*zspacing]]
+        box = np.array(box)
+        buildswdipole(atoms,nx,ny,nz,a,box)
+        
 # create the loop 
     if createloop:
         print("\n/////////////// Buidling SIA Loop \\\\\\\\\\\\\\\\\\\\\\\\\\\\")
@@ -307,11 +320,12 @@ def main():
                              atoms[i][1], atoms[i][2],atoms[i][3]))
     fout.close()
     correct = True
+    
 # write LAMMPS input file
     flammps = open("zr.data","w")
     flammps.write("#ver. "+ver+" HCP-Zr [11-20],[0001],[-1100] + dislocation and loop, metal units, "+str(T)+"K")
     flammps.write("\n    %d atoms\n    %d atom types\n"%(natoms,1)) #N atoms, 1 type
-    if correct and createscrew:
+    if correct and (createscrew):
         print("--> warning: shearing box for screw dislocation")
         Ly = box[1,1]-box[1,0]
         yhi = np.sqrt(Ly**2-a**2/4)+box[1,0]
@@ -437,6 +451,37 @@ def buildscrew(atoms,nx,ny,nz,a,box):
     #            atoms[aid][1] -= a/2 # -y boundary
     #            aid = returnid([ix,ny[1]-1,iz,ib], nx, ny, nz, [0,4])
     #            atoms[aid][1] += a/2 # +y boundary
+
+
+def buildswdipole(atoms,nx,ny,nz,a,box):
+    """ build a dislocation screw dipole along the x-direction with image effects"""
+    cntr = np.sum(box,1)/2.
+    L = np.diff(box,1)/2.
+    V = L[0]*L[1]*L[2]
+    Ly = box[1][1]-box[1][0]
+
+    Rb = [np.nan,np.sqrt(3)*a*ny[0]/2,0.0]
+    Rd = [np.nan,np.sqrt(3)*a*(ny[1])/2,0.0]
+
+    cx = [box[0][1]-box[0][0],0.0,0.0]
+    cy = [0.0,box[1][1]-box[1][0],0.0]
+    cz = [0.0,0.0,box[2][1]-box[2][0]]
+    
+    nimages = [0,5,5]
+    correct = None
+    
+    for ia in range(len(atoms)):
+        origin = [ atoms[ia][1]+0.001, box[1][0], box[2][0] ]
+        u,correct = pd.u_pbc(atoms[ia][1],atoms[ia][2],atoms[ia][3],
+                              a, Rb, Rd,
+                              cx, cy, cz, nimages, origin,
+                              [0.0,0.0,0.0], None)
+
+        atoms[ia][1] += u[0] - 0.5*a*atoms[ia][3]/L[2]
+        atoms[ia][2] += u[1]
+        atoms[ia][3] += u[2]
+        #print("correct =",(correct))
+
 
 def fixids(atoms):
     for i in range(len(atoms)):
